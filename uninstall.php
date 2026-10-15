@@ -1,5 +1,6 @@
 <?php
 defined('WP_UNINSTALL_PLUGIN') || exit;
+delete_site_transient('visitas_update_manifest');
 if (!defined('VISITAS_DELETE_DATA') || VISITAS_DELETE_DATA !== true) { return; }
 global $wpdb;
 wp_clear_scheduled_hook('visitas_queue'); wp_clear_scheduled_hook('visitas_due');

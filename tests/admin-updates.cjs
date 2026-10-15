@@ -1,0 +1,73 @@
+/* Focused test of native WordPress update UI. Use a disposable COPY, never the checkout symlink. */
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+if (process.env.VISITAS_TESTING !== '1' || !process.env.VISITAS_WP_ROOT || !process.env.VISITAS_UPDATE_FIXTURE) throw new Error('Set test environment, disposable WP copy and release fixture.');
+const plugin = path.join(process.env.VISITAS_WP_ROOT, 'wp-content/plugins/visitas');
+if (fs.lstatSync(plugin).isSymbolicLink() || fs.realpathSync(plugin) === fs.realpathSync(path.join(__dirname, '..'))) throw new Error('Refusing to update a linked repository.');
+const base = process.env.TEST_BASE_URL || 'http://127.0.0.1:8100';
+const output = process.env.VISITAS_SCREENSHOTS || '/tmp/visitas-updater-screenshots';
+const release = JSON.parse(fs.readFileSync(process.env.VISITAS_UPDATE_FIXTURE, 'utf8'));
+fs.mkdirSync(output, { recursive: true });
+let server, browser;
+(async () => {
+  const args = process.env.VISITAS_PHP_INI ? ['-c', process.env.VISITAS_PHP_INI] : [];
+  args.push('-d', 'auto_prepend_file=' + path.join(__dirname, 'mock-services.php'), '-S', new URL(base).host, '-t', process.env.VISITAS_WP_ROOT, path.join(__dirname, 'router.php'));
+  server = spawn(process.env.VISITAS_PHP || 'php', args, { stdio: ['ignore', 'ignore', 'pipe'], env: process.env });
+  server.stderr.on('data', d => { if (/Fatal error|Parse error/.test(String(d))) console.error(String(d)); });
+  for (let i = 0; i < 40; i++) {
+    try { await fetch(base + '/?visitas_app=1'); break; } catch { await new Promise(r => setTimeout(r, 100)); }
+  }
+  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, headless: true, args: ['--no-sandbox'] });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: 'pt-BR' });
+  const page = await context.newPage(); const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(base + '/?visitas_app=1');
+  await page.locator('input[name="login"]').fill(process.env.TEST_ADMIN_USER || 'admin');
+  await page.locator('input[name="password"]').fill(process.env.TEST_ADMIN_PASSWORD || 'QA-Test-Password-2026');
+  await page.locator('button[type="submit"]').click();
+  await page.locator('#v-kanban').waitFor();
+  await page.goto(base + '/wp-admin/admin.php?page=visitas');
+  await page.getByRole('heading', { name: 'Atualizações', exact: true }).waitFor();
+  assert.ok((await page.getByRole('link', { name: 'Verificar atualizações', exact: true }).getAttribute('href')).includes('_wpnonce='));
+  await page.screenshot({ path: path.join(output, 'updates-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: path.join(output, 'updates-mobile.png'), fullPage: true });
+  console.log('PASS update panel and nonce link render on desktop and mobile');
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByRole('link', { name: 'Verificar atualizações', exact: true }).click();
+  await page.waitForURL('**/plugins.php?visitas_update_check=available');
+  assert.ok((await page.locator('.notice-success').allTextContents()).join(' ').includes('nova versão do Visitas'));
+  const row = page.locator('[data-plugin="visitas/visitas.php"]').first();
+  assert.equal(await row.getByRole('link', { name: 'Verificar atualizações', exact: true }).count(), 1);
+  const update = page.locator('.plugin-update-tr[data-plugin="visitas/visitas.php"]');
+  await update.locator('.update-link').waitFor();
+  assert.ok((await update.textContent()).includes(release.version));
+  assert.equal(await row.locator('.toggle-auto-update').count(), 1, 'Native automatic update choice is available');
+  await page.screenshot({ path: path.join(output, 'native-update-offer.png'), fullPage: true });
+  console.log('PASS manual check redirects to Plugins with native update offer and automatic update choice');
+  const invalid = await context.request.get(base + '/wp-admin/admin-post.php?action=visitas_check_updates&_wpnonce=bad');
+  assert.equal(invalid.status(), 403);
+  await page.goto(base + '/wp-admin/plugin-install.php?tab=plugin-information&plugin=visitas&TB_iframe=true');
+  assert.ok((await page.locator('body').textContent()).includes(release.version));
+  console.log('PASS invalid nonce is denied and native version-details screen works');
+  await page.goto(base + '/wp-admin/plugins.php');
+  await page.locator('.plugin-update-tr[data-plugin="visitas/visitas.php"] .update-link').click();
+  await page.locator('.plugin-update-tr[data-plugin="visitas/visitas.php"] .updated-message').waitFor({ timeout: 30000 });
+  await page.reload();
+  const updatedRow = page.locator('[data-plugin="visitas/visitas.php"]').first();
+  assert.ok((await updatedRow.textContent()).includes(release.version));
+  assert.equal(await updatedRow.locator('.deactivate').count(), 1, 'Plugin remains active');
+  assert.equal(await page.locator('.plugin-update-tr[data-plugin="visitas/visitas.php"]').count(), 0);
+  await page.goto(base + '/?visitas_app=1');
+  await page.locator('#v-kanban').waitFor();
+  assert.ok(await page.locator('.v-list').count() > 0);
+  assert.deepEqual(errors, []);
+  console.log('PASS native Update now installs the newer ZIP, keeps activation and opens the portal afterwards');
+})().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
+  if (browser) await browser.close();
+  if (server) server.kill('SIGTERM');
+});

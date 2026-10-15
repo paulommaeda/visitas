@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban e identidade visual configurável. Versão atual: **1.0.1**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban e identidade visual configurável. Versão atual: **1.0.2**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.0.1.zip` e ative. Para atualizar a versão anterior, envie o novo ZIP e escolha substituir o plugin atual; quadros e configurações são preservados.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.0.2.zip` e ative. Para atualizar versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -14,6 +14,16 @@ Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com
 Shortcode: `[visitas_portal]`. Uma página que contenha esse shortcode também usa o portal completo, com layout próprio. O endereço alternativo `/?visitas_app=1` funciona quando a página principal não está disponível. A opção **Usar o portal também como página inicial do site** fica na personalização.
 
 Requisitos: WordPress 6.5+, PHP 8.1+, MySQL/MariaDB compatível com WordPress e OpenSSL para proteger credenciais. Tabelas transacionais usam o prefixo do próprio WordPress; prefira InnoDB. Instalação por site; ativação em rede multisite não é suportada nesta versão.
+
+## Atualizações pelo WordPress
+
+A partir de 1.0.2, o plugin consulta as versões publicadas no repositório público `paulommaeda/visitas` e integra a oferta ao mecanismo nativo do WordPress. Novas versões aparecem em **Plugins** e **Painel → Atualizações**; clique em **Atualizar agora**. O administrador pode optar pelas atualizações automáticas no controle padrão do WordPress.
+
+Para consultar imediatamente, clique em **Verificar atualizações** na linha do plugin ou em **Visitas → Atualizações**. Essa ação consulta apenas o Visitas e mantém as informações dos outros plugins. Não exige token do GitHub. A hospedagem precisa conseguir acessar `raw.githubusercontent.com` por HTTPS.
+
+O resultado da consulta fica em cache por até seis horas, respeitando a frequência de verificação do próprio WordPress. A verificação manual ignora esse cache. Falhas de consulta são temporárias e não alteram o plugin instalado. O ZIP tem pasta `visitas/` e seu SHA-256 é conferido antes de substituir os arquivos. Uma atualização não remove quadros, cartões, usuários ou configurações. Faça backup antes de atualizar.
+
+O canal recebe somente as versões do manifesto `dist/update.json` e os pacotes `dist/visitas-VERSAO.zip`; alterações de código no GitHub sem novo pacote publicado não são oferecidas como atualização. Não há envio de dados de visitantes, SMS ou credenciais ao GitHub.
 
 ## Quadros, listas e cartões
 
@@ -117,8 +127,10 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py /caminho/visitas-1.0.1.zip
+python3 bin/build.py dist/visitas-1.0.2.zip
 ```
+
+O script extrai a versão e os requisitos dos cabeçalhos e gera também `dist/update.json`, com URL do ZIP, histórico e SHA-256. Publique o código, o ZIP e o manifesto juntos em `main`. Mantenha os ZIPs anteriores disponíveis para instalações que ainda tenham uma oferta em cache. Não altere um ZIP já publicado; aumente a versão para cada lançamento.
 
 Testes devem rodar em um WordPress descartável. Nunca use dados reais ou uma instalação de produção. O teste de integração bloqueia envios reais de e-mail e SMS e remove suas próprias fixtures:
 
@@ -130,8 +142,14 @@ O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPre
 
 Ao iniciar o servidor PHP, o teste carrega `tests/mock-services.php` para bloquear envios reais e simular as respostas do SMS Gateway. Se usar um servidor externo ao teste, carregue esse arquivo como mu-plugin nesse WordPress descartável e configure `VISITAS_TESTING=1` no processo PHP.
 
+`tests/updates.php` valida o canal de atualização e executa uma substituição real dos arquivos com `Plugin_Upgrader`. Use uma **cópia descartável** do WordPress e do plugin, sem link simbólico para o repositório. Além de `VISITAS_TESTING=1` e `VISITAS_WP_ROOT`, informe `VISITAS_TEST_PACKAGE` com um ZIP de teste cuja versão seja o próximo patch da instalada. O teste intercepta todas as requisições externas e verifica a preservação de ativação, quadros, cartões e configurações.
+
+`tests/admin-updates.cjs` valida o mesmo fluxo pela interface do WordPress, inclusive o clique em Atualizar agora. Use essa cópia descartável, os parâmetros PHP/Playwright acima, `VISITAS_TEST_PACKAGE` e `VISITAS_UPDATE_FIXTURE` apontando para um manifesto JSON local da versão de teste. Os arquivos de teste não entram no ZIP distribuído.
+
 Licença GPL-2.0-or-later. Montserrat: SIL Open Font License, em `assets/fonts/OFL.txt`.
 
 Validação da versão 1.0.0: PHP 8.3.6, WordPress 7.1.3 com o driver oficial SQLite em ambiente descartável; 64 verificações de integração aprovadas. Interface validada em Chromium, desktop (1440 px) e celular (390 px), incluindo login, cadastro, movimentação, checklist, histórico, configurações, negação de acesso sem nonce e redirecionamento de não administradores do wp-admin. Os testes do gateway utilizaram respostas simuladas; a conexão com o aparelho de produção exige as credenciais da instalação.
 
 Validação da versão 1.0.1: 88 verificações de integração aprovadas. O navegador confirmou o arraste antes da conclusão da requisição, uma única gravação sem recarregar o quadro, preservação da rolagem e restauração em falhas. O formulário de SMS foi validado em desktop e celular, incluindo autenticação recusada, aceitação do teste e consulta de entrega, com os serviços externos simulados.
+
+Validação da versão 1.0.2: 88 verificações de regressão e 36 do atualizador aprovadas em WordPress 7.1.3/PHP 8.3.6. Foram testados cache, indisponibilidade, manifesto inválido, permissões, nonce, integridade do pacote e atualização nativa preservando os dados. O navegador validou a tela em desktop e celular, consulta manual, detalhes da versão e Atualizar agora até a reabertura do portal, com GitHub e demais serviços simulados.

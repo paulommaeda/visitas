@@ -1,0 +1,14 @@
+{
+  "slug": "visitas",
+  "version": "1.0.2",
+  "requires": "6.5",
+  "requires_php": "8.1",
+  "tested": "7.1",
+  "download_url": "https://raw.githubusercontent.com/paulommaeda/visitas/main/dist/visitas-1.0.2.zip",
+  "sha256": "660148fbe9f9dd8be267ecf624e2d1fa305a5ff9af242d6248640c7c992dd2f4",
+  "sections": {
+    "description": "<p>Portal de acolhimento de visitantes com quadros Kanban, listas, cartões, checklists, perfis, identidade visual e notificações.</p>",
+    "installation": "<p>Envie o ZIP em Plugins → Adicionar plugin → Enviar plugin. A partir da versão 1.0.2, use Atualizar agora na lista de plugins para instalar novas versões publicadas no GitHub.</p>",
+    "changelog": "<h4>1.0.2</h4>\n<p>Atualizações nativas pelo painel WordPress a partir do GitHub, verificação manual por administradores, detalhes da versão e conferência SHA-256 do pacote antes da instalação. Quadros e configurações são preservados.</p>\n<h4>1.0.1</h4>\n<p>Teste direto de SMS nas configurações, consulta de entrega e movimentação imediata de cartões com gravação em segundo plano e recuperação em caso de falha.</p>\n<h4>1.0.0</h4>\n<p>Primeira versão: portal independente, quadros Kanban, listas, cartões de visitantes, modelos por quadro, atributos personalizados, controle de acesso e notificações por e-mail e SMS Gateway for Android.</p>"
+  }
+}

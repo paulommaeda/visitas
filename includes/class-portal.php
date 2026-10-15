@@ -38,7 +38,9 @@ final class Portal {
         });
         add_action('admin_menu',static function() {
             add_menu_page('Visitas','Visitas','manage_options','visitas',static function() {
-                echo '<div class="wrap"><h1>Visitas — Acolhimento</h1><p>Quadros, identidade, equipe e permissões ficam no portal.</p><p><a class="button button-primary" href="'.esc_url(self::url()).'">Abrir o portal</a></p><p>Shortcode: <code>[visitas_portal]</code></p></div>';
+                echo '<div class="wrap"><h1>Visitas — Acolhimento</h1><p>Quadros, identidade, equipe e permissões ficam no portal.</p><p><a class="button button-primary" href="'.esc_url(self::url()).'">Abrir o portal</a></p><p>Shortcode: <code>[visitas_portal]</code></p>';
+                Updater::panel();
+                echo '</div>';
             },'dashicons-groups',25);
         });
         add_filter('plugin_action_links_'.plugin_basename(VISITAS_FILE),static function($links) { array_unshift($links,'<a href="'.esc_url(self::url()).'">Abrir portal</a>'); return $links; });
