@@ -10,13 +10,13 @@ function call_api(string $method,string $route,array $body=[],int $status=200): 
     $r=new WP_REST_Request($method,'/visitas/v1/'.$route); $r->set_header('content-type','application/json'); $r->set_body(wp_json_encode($body));
     $res=rest_do_request($r); check($res->get_status()===$status,$method.' '.$route.' HTTP '.$status.' (got '.$res->get_status().')'); return $res->get_data();
 }
-$mail=[];$sms=[];$sms_fail=false;
+$mail=[];$sms=[];$sms_fail=false;$sms_code=202;
 add_filter('pre_wp_mail',static function($r,$args) use(&$mail) { $mail[]=$args;return true; },999,2);
-add_filter('pre_http_request',static function($r,$args,$url) use(&$sms,&$sms_fail) {
+add_filter('pre_http_request',static function($r,$args,$url) use(&$sms,&$sms_fail,&$sms_code) {
     if (str_starts_with($url,'https://api.sms-gate.app/')) {
         if (($args['method']??'GET')==='POST') {
             $payload=json_decode($args['body'],true); $sms[]=['url'=>$url,'args'=>$args,'payload'=>$payload];
-            return ['headers'=>[],'response'=>['code'=>$sms_fail?503:202,'message'=>'Mock'],'body'=>wp_json_encode(['id'=>$payload['id'],'state'=>'Pending']),'cookies'=>[]];
+            return ['headers'=>[],'response'=>['code'=>$sms_fail?503:$sms_code,'message'=>'Mock'],'body'=>wp_json_encode(['id'=>$payload['id'],'state'=>'Pending']),'cookies'=>[]];
         }
         return ['headers'=>[],'response'=>['code'=>200,'message'=>'OK'],'body'=>wp_json_encode(['id'=>basename($url),'state'=>'Delivered']),'cookies'=>[]];
     }
@@ -88,10 +88,30 @@ try {
     check(!get_role('visitas_qa_'.$suffix)->has_cap('manage_options'),'Role editor cannot grant WordPress administrative powers');
     remove_role('visitas_qa_'.$suffix);
     call_api('DELETE','boards/'.$private_id);
+    call_api('PATCH','settings',['sms_enabled'=>false]);
+    $test_input=['phone'=>'(41) 99999-9981','message'=>'Teste direto do gateway','request_id'=>'qa-test-'.$suffix.'-direct'];$sent_before=count($sms);
+    $test=call_api('POST','sms/test',$test_input);
+    check(count($sms)===$sent_before+1 && $test['state']==='accepted','Test SMS is dispatched immediately with automations disabled');
+    check($test['recipient']==='+5541999999981' && str_contains($test['detail'],'HTTP 202') && $test['provider_id'],'Test returns normalized recipient, gateway HTTP result and message identifier');
+    check(!Settings::get()['sms_enabled'],'Test does not enable SMS automations');
+    $same=call_api('POST','sms/test',$test_input);check($same['id']===$test['id'] && count($sms)===$sent_before+1,'Repeated test request is idempotent');
+    call_api('POST','sms/test',array_merge($test_input,['phone'=>'(41) 99999-9982']),409);
+    $confirmed=call_api('GET','sms/test/'.$test['id']);check($confirmed['state']==='delivered','Test delivery status can be consulted independently');
+    as_user($user_ids['visitas_recepcao']);call_api('POST','sms/test',$test_input,403);call_api('GET','sms/test/'.$test['id'],[],403);
+    as_user($admin);call_api('GET','sms/test/99999999',[],404);call_api('POST','sms/test',array_merge($test_input,['phone'=>'invalid']),422);
+    $sms_code=401;$denied=call_api('POST','sms/test',array_merge($test_input,['request_id'=>'qa-test-'.$suffix.'-auth']));
+    check($denied['state']==='failed' && str_contains($denied['detail'],'HTTP 401'),'Test exposes useful authentication failure without credentials');
+    $sms_code=503;$uncertain_input=array_merge($test_input,['request_id'=>'qa-test-'.$suffix.'-uncertain']);$uncertain=call_api('POST','sms/test',$uncertain_input);
+    check($uncertain['state']==='unknown','Unconfirmed test send is identified separately');
+    $after_uncertain=count($sms);Notifications::process();call_api('POST','sms/test',$uncertain_input);
+    check(count($sms)===$after_uncertain,'Unconfirmed direct tests are not retried by cron or duplicate requests');
+    $sms_code=202;$resolved=call_api('GET','sms/test/'.$uncertain['id']);check($resolved['state']==='delivered','Uncertain test can be reconciled by status query');
+    call_api('PATCH','settings',['clear_sms_password'=>true]);call_api('POST','sms/test',array_merge($test_input,['request_id'=>'qa-test-'.$suffix.'-unconfigured']),422);
     echo "\n$passed assertions passed. No live messages sent.\n";
 } finally {
     as_user($admin);update_option('visitas_settings',$saved_settings,false);
     global $wpdb;
+    if (isset($suffix)) { $wpdb->query($wpdb->prepare('DELETE FROM '.Store::table('notifications').' WHERE event_key LIKE %s','test:'.$admin.':qa-test-'.$suffix.'%')); }
     foreach ($board_ids as $bid) {
         $ids=$wpdb->get_col($wpdb->prepare('SELECT id FROM '.Store::table('cards').' WHERE board_id=%d',$bid));
         foreach ($ids as $id) { $wpdb->delete(Store::table('notifications'),['card_id'=>$id]);$wpdb->delete(Store::table('activity'),['card_id'=>$id]); }

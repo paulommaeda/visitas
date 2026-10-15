@@ -1,7 +1,7 @@
-/* Visitas 1.0 — local assets, no build step or external scripts. */
+/* Visitas 1.0.1 — local assets, no build step or external scripts. */
 (() => {
   'use strict';
-  const V = window.V = { actions: {}, data: null, board: null, cards: [], screen: 'board', filters: { q: '', assigned: '', due: '', archived: false }, modalDirty: false };
+  const V = window.V = { actions: {}, data: null, board: null, cards: [], screen: 'board', filters: { q: '', assigned: '', due: '', archived: false }, modalDirty: false, pendingMoves: new Map(), dragId: 0 };
   const config = window.VISITAS_CONFIG;
   V.$ = (s, root = document) => root?.querySelector(s) || null;
   V.$$ = (s, root = document) => root ? [...root.querySelectorAll(s)] : [];
@@ -55,7 +55,7 @@
   V.api = async (path, method = 'GET', body) => {
     const r = await fetch(V.apiURL(path), { method, credentials: 'same-origin', headers: { 'X-WP-Nonce': config.nonce, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     let data; try { data = await r.json(); } catch { throw new Error('O servidor retornou uma resposta inesperada. Recarregue a página.'); }
-    if (!r.ok) { if (data.code === 'rest_cookie_invalid_nonce') throw new Error('Sua sessão expirou. Recarregue a página para entrar novamente.'); throw new Error(data.message || 'Não foi possível concluir.'); }
+    if (!r.ok) { const error = new Error(data.code === 'rest_cookie_invalid_nonce' ? 'Sua sessão expirou. Recarregue a página para entrar novamente.' : data.message || 'Não foi possível concluir.'); error.status = r.status; throw error; }
     return data;
   };
   V.form = (id, handler) => {
@@ -104,6 +104,7 @@
   });
   document.addEventListener('click', async e => {
     const t = e.target.closest('[data-action]'); if (!t || t.disabled) return;
+    if (t.dataset.action === 'card' && (V.pendingMoves.has(+t.dataset.id) || Date.now() < (V.dragClickUntil || 0))) return;
     const fn = V.actions[t.dataset.action]; if (!fn) return;
     e.preventDefault(); if (t.tagName === 'BUTTON') t.disabled = true;
     try { await fn(t, e); } catch (error) { V.toast(error.message, true); }
@@ -139,8 +140,120 @@
   V.cardHTML = c => {
     const u = V.staff(c.assigned_to), done = c.checklists.flatMap(x => x.items).filter(i => i.done).length, total = c.checklists.flatMap(x => x.items).length;
     const overdue = c.due_at && new Date(c.due_at) < new Date() && !+c.completed;
-    const edit = V.cap('edit_cards') && !V.board.read_only;
-    return `<article class="v-card ${+c.completed ? 'v-card-completed' : ''}" data-card="${c.id}" draggable="${edit}"><button class="v-card-open" data-action="card" data-id="${c.id}">${c.labels.length ? `<div class="v-card-labels">${c.labels.map((l, i) => `<span class="v-label v-label-${i % 4}">${V.e(l)}</span>`).join('')}</div>` : ''}<div class="v-card-title">${V.e(c.title)}</div>${c.source ? `<p class="v-card-source">${V.e(c.source)}</p>` : ''}${c.description ? `<p class="v-card-description">${V.e(c.description.slice(0, 100))}</p>` : ''}<div class="v-card-meta">${c.due_at ? `<span class="v-badge ${+c.completed ? 'v-badge-done' : overdue ? 'v-badge-overdue' : ''}">${V.icon(+c.completed ? 'check' : 'clock')}${V.date(c.due_at)}</span>` : (+c.completed ? '<span class="v-badge v-badge-done">Concluído</span>' : '')}${total ? `<span class="v-check-progress ${done === total ? 'v-progress-done' : ''}">${V.icon('checklist')}${done}/${total}</span>` : ''}${u ? V.avatar(u.name, true) : '<span class="v-no-assignee" title="Sem responsável">—</span>'}</div></button></article>`;
+    const pending = V.pendingMoves.has(+c.id), edit = V.cap('edit_cards') && !V.board.read_only;
+    return `<article class="v-card ${+c.completed ? 'v-card-completed' : ''} ${pending ? 'v-card-saving' : ''}" data-card="${c.id}" draggable="${edit && !pending}" aria-busy="${pending}"><button class="v-card-open" data-action="card" data-id="${c.id}" ${pending ? 'disabled' : ''}>${c.labels.length ? `<div class="v-card-labels">${c.labels.map((l, i) => `<span class="v-label v-label-${i % 4}">${V.e(l)}</span>`).join('')}</div>` : ''}<div class="v-card-title">${V.e(c.title)}</div>${c.source ? `<p class="v-card-source">${V.e(c.source)}</p>` : ''}${c.description ? `<p class="v-card-description">${V.e(c.description.slice(0, 100))}</p>` : ''}<div class="v-card-meta">${c.due_at ? `<span class="v-badge ${+c.completed ? 'v-badge-done' : overdue ? 'v-badge-overdue' : ''}">${V.icon(+c.completed ? 'check' : 'clock')}${V.date(c.due_at)}</span>` : (+c.completed ? '<span class="v-badge v-badge-done">Concluído</span>' : '')}${total ? `<span class="v-check-progress ${done === total ? 'v-progress-done' : ''}">${V.icon('checklist')}${done}/${total}</span>` : ''}${u ? V.avatar(u.name, true) : '<span class="v-no-assignee" title="Sem responsável">—</span>'}</div>${pending ? '<span class="v-move-status" role="status">Salvando movimentação…</span>' : ''}</button></article>`;
+  };
+
+  V.placeCard = (id, listId, beforeId = 0, afterId = 0) => {
+    const index = V.cards.findIndex(c => +c.id === +id); if (index < 0) return;
+    const [card] = V.cards.splice(index, 1); card.list_id = +listId;
+    let to = beforeId ? V.cards.findIndex(c => +c.id === +beforeId && +c.list_id === +listId) : -1;
+    if (to < 0 && afterId) { const after = V.cards.findIndex(c => +c.id === +afterId && +c.list_id === +listId); if (after >= 0) to = after + 1; }
+    if (to < 0) { for (let i = V.cards.length - 1; i >= 0; i--) if (+V.cards[i].list_id === +listId) { to = i + 1; break; } }
+    V.cards.splice(to < 0 ? V.cards.length : to, 0, card);
+  };
+  V.syncCardElement = id => {
+    const kanban = V.$('#v-kanban'); if (!kanban) return;
+    const visible = V.filtered(), card = visible.find(c => +c.id === +id);
+    const old = V.$(`[data-card="${id}"]`, kanban);
+    if (!card) old?.remove();
+    else {
+      const holder = document.createElement('div'); holder.innerHTML = V.cardHTML(card); const node = holder.firstElementChild;
+      if (old) old.replaceWith(node);
+      const column = V.$(`[data-drop="${card.list_id}"]`, kanban);
+      if (column) {
+        const listCards = visible.filter(c => +c.list_id === +card.list_id), index = listCards.findIndex(c => +c.id === +id);
+        const next = listCards[index + 1], anchor = next ? V.$(`[data-card="${next.id}"]`, column) : null;
+        column.insertBefore(node, anchor);
+      }
+    }
+    for (const list of V.board.lists) {
+      const section = V.$(`[data-list="${list.id}"]`, kanban), column = V.$('[data-drop]', section); if (!column) continue;
+      const count = visible.filter(c => +c.list_id === +list.id).length;
+      V.$('.v-list-count', section).textContent = count;
+      const empty = V.$('.v-empty-list', column);
+      if (count) empty?.remove();
+      else if (!empty) column.insertAdjacentHTML('beforeend', `<div class="v-empty-list"><span>${V.icon(+V.board.initial_list_id === +list.id ? 'people' : 'arrow')}</span><p>${+V.board.initial_list_id === +list.id ? 'Cada novo encontro começa aqui.' : 'Espaço para o próximo passo.'}</p><small>${V.filters.q || V.filters.assigned || V.filters.due ? 'Nenhum visitante neste filtro.' : 'Os cartões desta etapa aparecerão aqui.'}</small></div>`);
+    }
+    V.$('#v-results').textContent = `${visible.length} de ${V.cards.length} visitantes`;
+  };
+  V.moveCard = async (id, listId, beforeId = 0) => {
+    id = +id; listId = +listId; beforeId = +beforeId;
+    const card = V.cards.find(c => +c.id === id);
+    if (!card || !V.cap('edit_cards') || V.board.read_only || V.pendingMoves.has(id) || beforeId === id || !V.board.lists.some(l => +l.id === listId)) return;
+    const siblings = V.cards.filter(c => +c.list_id === +card.list_id), index = siblings.findIndex(c => +c.id === id);
+    if (+card.list_id === listId && (beforeId === +(siblings[index + 1]?.id || 0))) return;
+    const move = { boardId: +V.board.id, old: { ...card }, before: +(siblings[index + 1]?.id || 0), after: +(siblings[index - 1]?.id || 0) };
+    V.pendingMoves.set(id, move);
+    V.placeCard(id, listId, beforeId); V.syncCardElement(id);
+    try {
+      const saved = await V.api('cards/' + id, 'PATCH', { version: +move.old.version, list_id: listId, before_id: beforeId });
+      V.pendingMoves.delete(id);
+      if (+V.board?.id === move.boardId) { const at = V.cards.findIndex(c => +c.id === id); if (at >= 0) V.cards[at] = saved; V.syncCardElement(id); }
+      V.toast('Cartão movido.');
+    } catch (error) {
+      V.pendingMoves.delete(id);
+      if (+V.board?.id === move.boardId) {
+        const at = V.cards.findIndex(c => +c.id === id); if (at >= 0) V.cards[at] = move.old;
+        V.placeCard(id, +move.old.list_id, move.before, move.after); V.syncCardElement(id);
+        if (error.status === 409) {
+          try { const current = await V.api('cards/' + id); if (+V.board?.id === move.boardId) { const at = V.cards.findIndex(c => +c.id === id); if (at >= 0) V.cards[at] = current; V.placeCard(id, +current.list_id); V.syncCardElement(id); } }
+          catch { /* The restored card remains available for an explicit refresh. */ }
+        }
+      }
+      V.toast('A movimentação não foi salva. ' + error.message, true);
+    }
+  };
+  V.clearDrag = () => {
+    if (V.dragId) V.dragClickUntil = Date.now() + 250;
+    V.dragId = 0; V.dragPoint = null; cancelAnimationFrame(V.dragFrame);
+    V.$$('.v-dragging,.v-drop-target').forEach(el => el.classList.remove('v-dragging', 'v-drop-target'));
+    V.$('.v-drop-marker')?.remove();
+  };
+  V.beforeAt = (column, y) => {
+    const cards = V.$$('[data-card]', column).filter(el => +el.dataset.card !== V.dragId);
+    let lo = 0, hi = cards.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1, rect = cards[mid].getBoundingClientRect(); if (y < rect.top + rect.height / 2) hi = mid; else lo = mid + 1; }
+    return +(cards[lo]?.dataset.card || 0);
+  };
+  V.dragTick = () => {
+    if (!V.dragId) return;
+    const p = V.dragPoint, wrap = V.$('.v-kanban-wrap');
+    if (p && wrap) {
+      const rect = wrap.getBoundingClientRect(), edge = 44;
+      if (p.x < rect.left + edge) wrap.scrollLeft -= Math.min(18, (rect.left + edge - p.x) / 3);
+      else if (p.x > rect.right - edge) wrap.scrollLeft += Math.min(18, (p.x - rect.right + edge) / 3);
+      const under = document.elementFromPoint(p.x, p.y)?.closest('.v-list'), column = V.$('[data-drop]', under);
+      if (column) {
+        const cr = column.getBoundingClientRect();
+        if (p.y < cr.top + 32) column.scrollTop -= Math.min(14, (cr.top + 32 - p.y) / 3);
+        else if (p.y > cr.bottom - 32) column.scrollTop += Math.min(14, (p.y - cr.bottom + 32) / 3);
+        V.$$('.v-drop-target').forEach(el => { if (el !== column) el.classList.remove('v-drop-target'); }); column.classList.add('v-drop-target');
+        let marker = V.$('.v-drop-marker');
+        if (!marker) { marker = document.createElement('div'); marker.className = 'v-drop-marker'; marker.setAttribute('aria-hidden', 'true'); }
+        const before = V.beforeAt(column, p.y), anchor = before ? V.$(`[data-card="${before}"]`, column) : null;
+        if (marker.parentElement !== column || marker.nextElementSibling !== anchor) column.insertBefore(marker, anchor);
+      }
+    }
+    V.dragFrame = requestAnimationFrame(V.dragTick);
+  };
+  V.bindDragDrop = () => {
+    const kanban = V.$('#v-kanban'); if (!kanban || kanban.dataset.dragBound) return; kanban.dataset.dragBound = '1';
+    kanban.addEventListener('dragstart', event => {
+      const el = event.target.closest('[data-card]');
+      if (!el || el.getAttribute('draggable') !== 'true' || V.pendingMoves.has(+el.dataset.card)) { event.preventDefault(); return; }
+      V.dragId = +el.dataset.card; event.dataTransfer.setData('text/plain', el.dataset.card); event.dataTransfer.effectAllowed = 'move';
+      requestAnimationFrame(() => { if (V.dragId === +el.dataset.card) el.classList.add('v-dragging'); }); V.dragFrame = requestAnimationFrame(V.dragTick);
+    });
+    kanban.addEventListener('dragover', event => { if (!V.dragId || !event.target.closest('.v-list')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; V.dragPoint = { x: event.clientX, y: event.clientY }; });
+    kanban.addEventListener('dragleave', event => { if (!kanban.contains(event.relatedTarget)) { V.dragPoint = null; V.$('.v-drop-marker')?.remove(); V.$$('.v-drop-target').forEach(el => el.classList.remove('v-drop-target')); } });
+    kanban.addEventListener('drop', event => {
+      const column = V.$('[data-drop]', event.target.closest('.v-list'));
+      if (!column || !V.dragId) return; event.preventDefault();
+      const id = V.dragId, listId = +column.dataset.drop, before = V.beforeAt(column, event.clientY);
+      V.clearDrag(); void V.moveCard(id, listId, before);
+    });
+    kanban.addEventListener('dragend', V.clearDrag);
   };
   V.renderBoard = () => {
     const b = V.board, cards = V.cards;
@@ -160,17 +273,7 @@
       const lc = cards.filter(c => +c.list_id === +l.id);
       return `<section class="v-list" data-list="${l.id}"><header class="v-list-header"><span class="v-list-dot" style="background:${V.e(l.color)}"></span><h2>${V.e(l.name)}</h2>${+b.initial_list_id === +l.id ? '<span class="v-initial-tag" title="Novos visitantes entram nesta lista">INÍCIO</span>' : ''}<span class="v-list-count">${lc.length}</span>${b.can_manage ? V.button('list-menu', '<span class="v-sr">Editar lista</span>', 'more', 'v-icon-btn', `data-id="${l.id}"`) : ''}</header><div class="v-list-cards" data-drop="${l.id}">${lc.map(V.cardHTML).join('') || `<div class="v-empty-list"><span>${V.icon(+b.initial_list_id === +l.id ? 'people' : 'arrow')}</span><p>${+b.initial_list_id === +l.id ? 'Cada novo encontro começa aqui.' : 'Espaço para o próximo passo.'}</p><small>${V.filters.q || V.filters.assigned || V.filters.due ? 'Nenhum visitante neste filtro.' : 'Os cartões desta etapa aparecerão aqui.'}</small></div>`}</div></section>`;
     }).join('') + (b.can_manage ? `<div class="v-add-list">${V.button('new-list', 'Adicionar lista', 'plus')}</div>` : '');
-    V.$$('[draggable="true"]').forEach(el => el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', el.dataset.card); e.dataTransfer.effectAllowed = 'move'; el.classList.add('v-dragging'); }));
-    V.$$('[data-card]').forEach(el => el.addEventListener('dragend', () => el.classList.remove('v-dragging')));
-    V.$$('[data-drop]').forEach(el => {
-      el.addEventListener('dragover', e => { if (!V.cap('edit_cards') || V.board.read_only) return; e.preventDefault(); el.classList.add('v-drop-target'); });
-      el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('v-drop-target'); });
-      el.addEventListener('drop', async e => {
-        e.preventDefault(); el.classList.remove('v-drop-target'); const id = +e.dataTransfer.getData('text/plain'); const c = V.cards.find(x => +x.id === id); if (!c) return;
-        const target = e.target.closest('[data-card]'); if (target && +target.dataset.card === id) return;
-        try { await V.api('cards/' + id, 'PATCH', { version: +c.version, list_id: +el.dataset.drop, ...(target ? { before_id: +target.dataset.card } : { before_id: 0 }) }); await V.reloadBoard(); V.toast('Cartão movido.'); } catch (err) { V.toast(err.message, true); }
-      });
-    });
+    V.bindDragDrop();
   };
   V.actions.board = t => V.openBoard(t.dataset.id);
   V.actions.reload = () => V.reloadBoard();
@@ -179,7 +282,7 @@
   V.actions.logout = () => { if (V.close()) V.$('#visitas-logout').submit(); };
   V.notifications = async (logs = false, page = 1) => {
     const r = await V.api(`notifications?logs=${logs ? 1 : 0}&page=${page}`);
-    const state = { queued: 'Na fila', processing: 'Processando', available: 'Disponível', accepted: 'Aceito para envio', sent: 'Enviado', delivered: 'Entregue', failed: 'Falhou', cancelled: 'Cancelado' };
+    const state = { queued: 'Na fila', processing: 'Processando', available: 'Disponível', accepted: 'Aceito para envio', sent: 'Enviado', delivered: 'Entregue', failed: 'Falhou', cancelled: 'Cancelado', test_ready: 'Preparando teste', testing: 'Enviando teste', unknown: 'Sem confirmação' };
     V.modal(logs ? 'Comunicações da equipe' : 'Suas notificações', `<div class="v-modal-body"><p class="v-muted">${logs ? 'E-mails e SMS: acompanhe a fila e a última confirmação disponível.' : 'Novas atribuições e lembretes dos seus acompanhamentos.'}</p>${logs ? V.button('sync', 'Consultar status dos SMS', 'mail') : ''}<div class="v-notifications">${r.items.map(n => `<article><div class="v-notification-icon">${V.icon(n.channel === 'inapp' ? 'bell' : n.channel === 'sms' ? 'phone' : 'mail')}</div><div><strong>${V.e(n.subject)}</strong><p>${V.e(n.body)}</p>${logs ? `<small>${V.e(n.recipient)} · <span class="v-state v-state-${n.state}">${V.e(state[n.state] || n.state)}</span> · ${+n.attempts} tentativa(s)</small><small>${V.e(n.detail)}</small>` : ''}<small>${V.date(n.created_at.replace(' ', 'T') + 'Z', true)}</small>${n.card_id ? V.button('notification-card', 'Abrir cartão', 'arrow', 'v-link-btn', `data-id="${n.card_id}"`) : ''}</div></article>`).join('') || '<div class="v-empty-page">Tudo em dia por aqui.</div>'}</div><div class="v-pagination">${page > 1 ? V.button(logs ? 'logs-page' : 'notifications-page', 'Anterior', '', '', `data-page="${page - 1}"`) : ''}${r.has_more ? V.button(logs ? 'logs-page' : 'notifications-page', 'Próxima', '', '', `data-page="${page + 1}"`) : ''}</div></div>`, true);
     if (!logs) { await V.api('notifications/read', 'POST', {}); V.$('#v-unread').hidden = true; }
   };

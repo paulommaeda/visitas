@@ -5,7 +5,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import sys
 
 root = Path(__file__).resolve().parents[1]
-output = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else root.parent / 'visitas-1.0.0.zip'
+output = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else root.parent / 'visitas-1.0.1.zip'
 excluded = {'.git', '.github', 'tests', 'bin', 'dist', '__pycache__', 'node_modules'}
 files = [p for p in root.rglob('*') if p.is_file() and not any(x in excluded for x in p.relative_to(root).parts) and not p.name.startswith('.') and p.name != 'AGENTS.md' and p.suffix not in {'.zip', '.log'}]
 output.parent.mkdir(parents=True, exist_ok=True)

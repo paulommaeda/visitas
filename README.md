@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban e identidade visual configurável. Primeira versão: **1.0.0**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban e identidade visual configurável. Versão atual: **1.0.1**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.0.0.zip` e ative.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.0.1.zip` e ative. Para atualizar a versão anterior, envie o novo ZIP e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -23,6 +23,7 @@ Requisitos: WordPress 6.5+, PHP 8.1+, MySQL/MariaDB compatível com WordPress e 
 - Quadros da equipe estão disponíveis a usuários autorizados do portal. Quadros privados exigem vínculo de membro, autoria ou a permissão de supervisão global.
 - Membros podem ser **Observador**, **Participante** ou **Gestor do quadro**. O perfil WordPress continua definindo as operações permitidas. Observadores do quadro têm acesso de leitura; administradores mantêm acesso pleno.
 - Arraste cartões no desktop para mudar etapa e posição. No celular, altere o campo **Lista** no cartão.
+- Ao soltar, o cartão muda de lugar imediatamente e uma única solicitação salva a movimentação em segundo plano. O quadro e sua rolagem são preservados. Uma falha restaura a posição anterior; conflitos de edição consultam a versão atual do cartão.
 - O cartão guarda nome, telefone, e-mail, nascimento, data da visita, origem, endereço, observações, etiquetas, pessoa responsável, data inicial, prazo, conclusão e arquivamento.
 - Atribuições exigem que a pessoa tenha acesso de edição ao quadro. Em quadros privados, adicione a pessoa como membro antes de atribuir o cartão.
 - Há busca por nome, contato, origem e etiquetas, filtros por responsável e prazo, e visualização de arquivados.
@@ -80,8 +81,12 @@ Documentação oficial: https://docs.sms-gate.app/
 1. Instale o aplicativo SMS Gateway no Android, com um chip apto a enviar SMS.
 2. Para um WordPress hospedado na internet, use **Cloud Server** no aplicativo e mantenha-o **Online**.
 3. Copie o usuário e a senha gerados para as configurações do plugin. Se necessário, informe o ID do dispositivo e o chip SIM.
-4. Habilite o canal SMS e salve. Autorize o contato no cartão, componha uma mensagem e adicione-a à fila para o primeiro teste.
+4. Use **Testar envio de SMS**, na mesma aba: informe um número com DDD, escreva a mensagem e clique em **Enviar SMS de teste**. O botão salva os dados do gateway preenchidos acima e faz o teste imediatamente, mesmo com as automações SMS desativadas e sem cadastrar um visitante.
 5. Confira o resultado em **Comunicações**. A conexão real com o seu aparelho precisa ser validada após configurar as credenciais.
+
+O resultado do teste mostra número normalizado, identificador da mensagem, retorno HTTP e estado do gateway. **Consultar entrega** busca a confirmação do aparelho. Aceitação e entrega são exibidas separadamente; erros de autenticação e conexão aparecem no próprio formulário. Os testes também ficam em **Comunicações**. Um teste sem confirmação não é reenviado automaticamente; a consulta de status e a repetição da mesma solicitação preservam seu identificador.
+
+Para começar a usar as automações após validar o teste, habilite o canal SMS e salve as configurações. Comunicações para visitantes continuam exigindo a autorização no cartão.
 
 | Modo | URL base a informar | Recurso usado pelo plugin |
 | --- | --- | --- |
@@ -112,7 +117,7 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py /caminho/visitas-1.0.0.zip
+python3 bin/build.py /caminho/visitas-1.0.1.zip
 ```
 
 Testes devem rodar em um WordPress descartável. Nunca use dados reais ou uma instalação de produção. O teste de integração bloqueia envios reais de e-mail e SMS e remove suas próprias fixtures:
@@ -123,6 +128,10 @@ VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/integration.php
 
 O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPress descartável com o plugin ativado. Configure `TEST_BASE_URL`, `TEST_ADMIN_USER` e `TEST_ADMIN_PASSWORD`. Opcionalmente, informe `VISITAS_PHP`, `VISITAS_PHP_INI` e `VISITAS_WP_ROOT` para o teste iniciar o servidor PHP. `CHROMIUM_PATH` e `PLAYWRIGHT_PATH` permitem usar runtimes já instalados.
 
+Ao iniciar o servidor PHP, o teste carrega `tests/mock-services.php` para bloquear envios reais e simular as respostas do SMS Gateway. Se usar um servidor externo ao teste, carregue esse arquivo como mu-plugin nesse WordPress descartável e configure `VISITAS_TESTING=1` no processo PHP.
+
 Licença GPL-2.0-or-later. Montserrat: SIL Open Font License, em `assets/fonts/OFL.txt`.
 
 Validação da versão 1.0.0: PHP 8.3.6, WordPress 7.1.3 com o driver oficial SQLite em ambiente descartável; 64 verificações de integração aprovadas. Interface validada em Chromium, desktop (1440 px) e celular (390 px), incluindo login, cadastro, movimentação, checklist, histórico, configurações, negação de acesso sem nonce e redirecionamento de não administradores do wp-admin. Os testes do gateway utilizaram respostas simuladas; a conexão com o aparelho de produção exige as credenciais da instalação.
+
+Validação da versão 1.0.1: 88 verificações de integração aprovadas. O navegador confirmou o arraste antes da conclusão da requisição, uma única gravação sem recarregar o quadro, preservação da rolagem e restauração em falhas. O formulário de SMS foi validado em desktop e celular, incluindo autenticação recusada, aceitação do teste e consulta de entrega, com os serviços externos simulados.

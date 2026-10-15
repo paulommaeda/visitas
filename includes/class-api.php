@@ -27,6 +27,8 @@ final class Api {
         self::route('/roles','POST',[self::class,'save_role']);
         self::route('/settings','GET',static function() { self::admin(); return Settings::editable(); });
         self::route('/settings','PATCH',static function($r) { self::admin(); return Settings::save(self::body($r)); });
+        self::route('/sms/test','POST',static function($r) { self::admin(); return Notifications::test_sms(self::body($r)); });
+        self::route('/sms/test/(?P<id>\d+)','GET',static function($r) { self::admin(); return Notifications::test_status((int)$r['id']); });
         self::route('/assets','POST',[self::class,'upload_asset']);
         self::route('/notifications','GET',[self::class,'notifications']);
         self::route('/notifications/read','POST',[self::class,'read_notifications']);

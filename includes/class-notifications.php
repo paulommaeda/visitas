@@ -49,7 +49,7 @@ final class Notifications {
         }
     }
 
-    public static function enqueue(string $key, string $channel, string $recipient, string $subject, string $body, int $card=0, int $user=0): int {
+    public static function enqueue(string $key, string $channel, string $recipient, string $subject, string $body, int $card=0, int $user=0, string $initial_state='queued'): int {
         global $wpdb;
         $existing=$wpdb->get_var($wpdb->prepare('SELECT id FROM '.Store::table('notifications').' WHERE event_key=%s AND channel=%s AND recipient=%s',$key,$channel,$recipient));
         if ($existing) { return (int)$existing; }
@@ -58,11 +58,61 @@ final class Notifications {
         $insert=$wpdb->insert(Store::table('notifications'),[
             'card_id'=>$card,'user_id'=>$user,'event_key'=>$key,'channel'=>$channel,'recipient'=>$recipient,
             'subject'=>sanitize_text_field($subject),'body'=>sanitize_textarea_field($body),
-            'state'=>$channel==='inapp'?'available':'queued','attempts'=>0,
+            'state'=>$channel==='inapp'?'available':$initial_state,'attempts'=>0,
             'provider_id'=>$channel==='sms'?wp_generate_uuid4():'','detail'=>'',
             'next_attempt'=>$now,'created_at'=>$now,'updated_at'=>$now,
         ]);
-        return $insert ? (int)$wpdb->insert_id : 0;
+        return $insert ? (int)$wpdb->insert_id : (int)$wpdb->get_var($wpdb->prepare('SELECT id FROM '.Store::table('notifications').' WHERE event_key=%s AND channel=%s AND recipient=%s',$key,$channel,$recipient));
+    }
+
+    public static function test_sms(array $input): array {
+        $phone=Store::phone((string)($input['phone']??''));
+        $body=sanitize_textarea_field((string)($input['message']??''));
+        $request_id=(string)($input['request_id']??'');
+        if (!$phone || !$body) { throw new HttpError('Informe o número com DDD e a mensagem de teste.',422); }
+        if (preg_match_all('/./us',$body)>480) { throw new HttpError('Use uma mensagem de teste com até 480 caracteres.',422); }
+        if (!preg_match('/^[a-zA-Z0-9-]{10,80}$/',$request_id)) { throw new HttpError('Identificador do teste inválido. Reabra as configurações e tente novamente.',422); }
+        $s=Settings::get();
+        if (!$s['sms_username'] || !Settings::sms_password()) { throw new HttpError('Salve o usuário e a senha do SMS Gateway antes de testar.',422); }
+        $key='test:'.get_current_user_id().':'.$request_id;
+        global $wpdb;
+        $prior=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.Store::table('notifications')." WHERE event_key=%s AND channel='sms' LIMIT 1",$key),ARRAY_A);
+        if ($prior && ($prior['recipient']!==$phone || $prior['body']!==$body)) { throw new HttpError('Este identificador já foi usado em outro teste. Inicie um novo teste.',409); }
+        // A direct test is an explicit administrator action. It does not enable automations,
+        // require a visitor, enter the cron queue or retry an uncertain send automatically.
+        $id=self::enqueue($key,'sms',$phone,'Teste de SMS',$body,0,get_current_user_id(),'test_ready');
+        if (!$id) { throw new HttpError('Não foi possível registrar o teste.',500); }
+        $n=Store::row('notifications',$id);
+        if ($n['body']!==$body) { throw new HttpError('Este identificador já foi usado com outra mensagem. Inicie um novo teste.',409); }
+        if (!Store::update('notifications',['state'=>'testing','attempts'=>1,'updated_at'=>current_time('mysql',true)],['id'=>$id,'state'=>'test_ready'])) { return self::test_result(Store::row('notifications',$id)); }
+        try {
+            $r=self::sms_request('POST','',[
+                'id'=>$n['provider_id'],'textMessage'=>['text'=>$body],'phoneNumbers'=>[$phone],
+                'simNumber'=>(int)$s['sms_sim'],'ttl'=>3600,'withDeliveryReport'=>true,
+            ]);
+            $detail='SMS Gateway retornou HTTP '.$r['_http_status'].'. Estado: '.sanitize_text_field($r['state']??'Pending').'.';
+            Store::update('notifications',['state'=>self::provider_state($r['state']??'Pending'),'detail'=>$detail,'updated_at'=>current_time('mysql',true)],['id'=>$id]);
+        } catch (\Throwable $e) {
+            $state=$e->getCode()===422?'failed':'unknown';
+            $detail=sanitize_text_field($e->getMessage());
+            if ($state==='unknown') { $detail.=' Consulte o status antes de iniciar outro teste; o gateway pode ter recebido a solicitação.'; }
+            Store::update('notifications',['state'=>$state,'detail'=>$detail,'updated_at'=>current_time('mysql',true)],['id'=>$id]);
+        }
+        return self::test_result(Store::row('notifications',$id));
+    }
+
+    private static function test_result(array $n): array {
+        return ['id'=>(int)$n['id'],'recipient'=>$n['recipient'],'provider_id'=>$n['provider_id'],'state'=>$n['state'],'detail'=>$n['detail']];
+    }
+
+    public static function test_status(int $id): array {
+        $n=Store::row('notifications',$id);
+        if (!$n || $n['channel']!=='sms' || !str_starts_with($n['event_key'],'test:') || (int)$n['user_id']!==get_current_user_id()) { throw new HttpError('Teste não encontrado.',404); }
+        try {
+            $r=self::sms_request('GET',$n['provider_id']);
+            Store::update('notifications',['state'=>self::provider_state($r['state']??'Pending'),'detail'=>'SMS Gateway retornou HTTP '.$r['_http_status'].'. Estado: '.sanitize_text_field($r['state']??'Pending').'.','updated_at'=>current_time('mysql',true)],['id'=>$id]);
+            return self::test_result(Store::row('notifications',$id));
+        } catch (\Throwable $e) { return array_merge(self::test_result($n),['query_error'=>sanitize_text_field($e->getMessage())]); }
     }
 
     public static function due(): void {
@@ -147,16 +197,20 @@ final class Notifications {
         if (is_wp_error($r)) { throw new \RuntimeException('Não foi possível conectar ao SMS Gateway. Verifique endereço e rede.'); }
         $code=wp_remote_retrieve_response_code($r); $body=json_decode(wp_remote_retrieve_body($r),true);
         if ($code===409 && $method==='POST') { return self::sms_request('GET',(string)$payload['id']); }
-        if ($code<200 || $code>=300) { throw new \RuntimeException('SMS Gateway retornou HTTP '.$code.'.',($code>=400 && $code<500 && $code!==429)?422:0); }
+        if ($code<200 || $code>=300) {
+            $hint=match($code) { 401,403=>' Verifique as credenciais e permissões do gateway.',404=>' Confira o modo e a URL base do gateway.',429=>' Aguarde antes de tentar novamente.',default=>'' };
+            throw new \RuntimeException('SMS Gateway retornou HTTP '.$code.'.'.$hint,($code>=400 && $code<500 && $code!==429)?422:0);
+        }
         if (!is_array($body) || empty($body['id'])) { throw new \RuntimeException('O SMS Gateway retornou uma resposta sem identificação da mensagem.'); }
-        if ($method==='POST' && $body['id']!==$payload['id']) { throw new \RuntimeException('O SMS Gateway não preservou o identificador da mensagem.',422); }
+        if ($body['id']!==($method==='POST'?$payload['id']:$id)) { throw new \RuntimeException('O SMS Gateway não preservou o identificador da mensagem.',422); }
+        $body['_http_status']=$code;
         return $body;
     }
 
     public static function sync(): void {
         global $wpdb;
-        if (!Settings::get()['sms_enabled']) { return; }
-        $rows=$wpdb->get_results('SELECT * FROM '.Store::table('notifications')." WHERE channel='sms' AND state IN ('accepted','sent') AND created_at>='".esc_sql(gmdate('Y-m-d H:i:s',time()-2*DAY_IN_SECONDS))."' ORDER BY updated_at LIMIT 5",ARRAY_A);
+        $test_only=Settings::get()['sms_enabled']?'':" AND event_key LIKE 'test:%'";
+        $rows=$wpdb->get_results('SELECT * FROM '.Store::table('notifications')." WHERE channel='sms' AND state IN ('accepted','sent')".$test_only." AND created_at>='".esc_sql(gmdate('Y-m-d H:i:s',time()-2*DAY_IN_SECONDS))."' ORDER BY updated_at LIMIT 5",ARRAY_A);
         foreach ($rows as $n) {
             try {
                 $r=self::sms_request('GET',$n['provider_id']);
