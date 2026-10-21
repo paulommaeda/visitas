@@ -105,14 +105,25 @@ final class Access {
     }
 
     public static function sees_card(array $card): bool {
-        return self::can('view_all_cards') || (int) $card['assigned_to'] === get_current_user_id() || (int) $card['created_by'] === get_current_user_id();
+        if (self::can('view_all_cards') || (int)$card['assigned_to'] === get_current_user_id() || (int)$card['created_by'] === get_current_user_id()) { return true; }
+        foreach (Store::json($card['checklists_json'] ?? $card['checklists'] ?? []) as $list) {
+            foreach ($list['items'] as $item) { if ((int)($item['assigned_to'] ?? 0) === get_current_user_id()) { return true; } }
+        }
+        return false;
+    }
+
+    public static function card_scope_sql(string $alias = ''): string {
+        global $wpdb;
+        if (self::can('view_all_cards')) { return ''; }
+        $prefix = $alias === 'c' ? 'c.' : Store::table('cards').'.';
+        return $wpdb->prepare(' AND ('.$prefix.'assigned_to=%d OR '.$prefix.'created_by=%d OR EXISTS (SELECT 1 FROM '.Store::table('task_assignees').' ta WHERE ta.card_id='.$prefix.'id AND ta.user_id=%d))', get_current_user_id(), get_current_user_id(), get_current_user_id());
     }
 
     public static function card(int $id, ?string $cap = null): array {
         $c = Store::row('cards', $id);
         if (!$c) { throw new HttpError('Cartão não encontrado.', 404); }
         if ($cap) { self::board_write((int) $c['board_id'], $cap); } else { self::board((int) $c['board_id']); }
-        if (!self::sees_card($c)) { throw new HttpError('Você só pode acessar cartões atribuídos a você ou criados por você.', 403); }
+        if (!self::sees_card($c)) { throw new HttpError('Você só pode acessar cartões criados por você, atribuídos a você ou com tarefas sob sua responsabilidade.', 403); }
         return $c;
     }
 }

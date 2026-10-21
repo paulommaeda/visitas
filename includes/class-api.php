@@ -60,8 +60,7 @@ final class Api {
     private static function admin(): void { if (!Access::admin()) { throw new HttpError('Apenas administradores podem alterar configurações e permissões.',403); } }
 
     private static function card_scope(): string {
-        global $wpdb;
-        return Access::can('view_all_cards') ? '' : $wpdb->prepare(' AND (assigned_to=%d OR created_by=%d)',get_current_user_id(),get_current_user_id());
+        return Access::card_scope_sql();
     }
 
     public static function bootstrap(): array {
@@ -200,7 +199,7 @@ final class Api {
 
     public static function delete_card($r): array {
         $c=Access::card((int)$r['id'],'delete_cards');
-        Store::transaction(static function() use($c) { global $wpdb; foreach (['notifications','activity'] as $t) { $wpdb->delete(Store::table($t),['card_id'=>$c['id']]); } $wpdb->delete(Store::table('cards'),['id'=>$c['id']]); });
+        Store::transaction(static function() use($c) { global $wpdb; foreach (['notifications','activity','task_assignees'] as $t) { $wpdb->delete(Store::table($t),['card_id'=>$c['id']]); } $wpdb->delete(Store::table('cards'),['id'=>$c['id']]); });
         return ['deleted'=>true];
     }
 

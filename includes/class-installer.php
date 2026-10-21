@@ -69,6 +69,12 @@ final class Installer {
                 KEY dashboard_visit (archived,visit_date,board_id),
                 KEY step_reminder (archived,completed,step_due_at)
             ) $cc;",
+            "CREATE TABLE {$p}task_assignees (
+                card_id bigint(20) unsigned NOT NULL,
+                user_id bigint(20) unsigned NOT NULL,
+                PRIMARY KEY  (card_id,user_id),
+                KEY user_card (user_id,card_id)
+            ) $cc;",
             "CREATE TABLE {$p}members (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                 board_id bigint(20) unsigned NOT NULL,

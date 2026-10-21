@@ -40,9 +40,7 @@ final class Dashboard {
         $archived = $r->get_param('include_archived') === '1';
         $scope = $ids ? 'c.board_id IN ('.implode(',', $ids).')' : '1=0';
         if (!$archived) { $scope .= ' AND c.archived=0'; }
-        if (!Access::can('view_all_cards')) {
-            $scope .= $wpdb->prepare(' AND (c.assigned_to=%d OR c.created_by=%d)', get_current_user_id(), get_current_user_id());
-        }
+        $scope .= Access::card_scope_sql('c');
         return ['month'=>$month, 'period'=>$period, 'board_id'=>(int)$board, 'include_archived'=>$archived, 'boards'=>$boards, 'scope'=>$scope];
     }
 

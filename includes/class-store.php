@@ -10,7 +10,7 @@ final class HttpError extends \RuntimeException {
 final class Store {
     public static function table(string $name): string {
         global $wpdb;
-        if (!in_array($name, ['boards','lists','cards','members','activity','notifications'], true)) { throw new HttpError('Tabela inválida.', 500); }
+        if (!in_array($name, ['boards','lists','cards','members','activity','notifications','task_assignees'], true)) { throw new HttpError('Tabela inválida.', 500); }
         return $wpdb->prefix . 'visitas_' . $name;
     }
 
@@ -92,6 +92,7 @@ final class Store {
         $b['workflow'] = Workflow::settings(self::json($b['workflow_json'] ?? ''));
         unset($b['schema_json'], $b['templates_json'], $b['workflow_json']);
         $b['lists'] = self::lists((int) $b['id']);
+        $b['assignees'] = array_values(array_filter(self::staff(), static fn($u) => self::can_assign((int)$b['id'], $u['id'])));
         $b['can_manage'] = false;
         try { Access::board((int) $b['id'], true); $b['can_manage'] = true; } catch (HttpError $e) {}
         $m = self::member((int) $b['id'], get_current_user_id());
@@ -130,7 +131,14 @@ final class Store {
                 $before = $old_items[$iid] ?? [];
                 $rule = $item['rule'] ?? ($before['rule'] ?? []);
                 if (!is_array($rule)) { throw new HttpError('Regra de checklist inválida.', 422); }
+                $assigned = $item['assigned_to'] ?? $before['assigned_to'] ?? 0;
+                if (!is_scalar($assigned) || !preg_match('/^\d+$/D', (string)$assigned)) { throw new HttpError('Responsável pela tarefa inválido.', 422); }
+                $assigned = (int)$assigned;
+                if ($assigned && $assigned !== (int)($before['assigned_to'] ?? 0) && $board_id !== null && !self::can_assign($board_id, $assigned)) {
+                    throw new HttpError('O responsável pela tarefa precisa ter acesso de edição ao quadro.', 422);
+                }
                 $items[] = ['id'=>$iid,'text'=>self::name($item['text'] ?? ''),'done'=>$template ? false : rest_sanitize_boolean($item['done'] ?? false),
+                    'assigned_to'=>$assigned,
                     'rule'=>Workflow::rule($rule, $board_id), 'instructions'=>Workflow::text($item['instructions'] ?? $before['instructions'] ?? '', 4000),
                     'notes'=>$template ? '' : Workflow::text($item['notes'] ?? $before['notes'] ?? '', 8000)];
             }
@@ -219,7 +227,7 @@ final class Store {
             if ($uid) {
                 if (!self::can_assign($board_id, $uid)) { throw new HttpError('O responsável precisa ter acesso de edição ao quadro.', 422); }
             }
-            if (!Access::can('view_all_cards') && !Access::can('manage_boards') && !Access::admin() && $uid && $uid !== get_current_user_id()) {
+            if (!Access::can('view_all_cards') && !Access::can('manage_boards') && !Access::admin() && $uid && $uid !== get_current_user_id() && (!$old || $uid !== (int)$old['assigned_to'])) {
                 throw new HttpError('Seu perfil só permite atribuir cartões a você.', 403);
             }
             $data['assigned_to'] = $uid;
@@ -233,6 +241,18 @@ final class Store {
         if (!$old || array_key_exists('checklists',$input) || !empty($input['use_board_workflow']) || !empty($input['disable_workflow'])) {
             $lists = self::checklists(self::json($data['checklists_json']), false, $board_id, $old ? self::json($old['checklists_json']) : []);
             $flow = Workflow::apply($lists, $old, $b, $now, !empty($input['use_board_workflow']), !empty($input['disable_workflow']));
+            if (!Access::can('view_all_cards') && !Access::can('manage_boards') && !Access::admin()) {
+                $previous = [];
+                foreach (self::json($old['checklists_json'] ?? $b['templates_json']) as $checklist) {
+                    foreach ($checklist['items'] as $item) { $previous[$checklist['id'].'/'.$item['id']] = (int)($item['assigned_to'] ?? 0); }
+                }
+                foreach ($flow['checklists'] as $checklist) { foreach ($checklist['items'] as $item) {
+                    $uid = $item['assigned_to'];
+                    if ($uid && $uid !== get_current_user_id() && $uid !== ($previous[$checklist['id'].'/'.$item['id']] ?? 0)) {
+                        throw new HttpError('Seu perfil só permite atribuir tarefas a você.', 403);
+                    }
+                } }
+            }
             $data['checklists_json'] = wp_json_encode($flow['checklists']);
             $data['workflow_json'] = wp_json_encode($flow['workflow']); $data['step_due_at'] = $flow['step_due_at'];
             $flow_events = $flow['events'];
@@ -265,6 +285,7 @@ final class Store {
             if (!empty($input['before_id'])) {
                 $wpdb->query($wpdb->prepare('UPDATE ' . self::table('cards') . ' SET position=position+1 WHERE list_id=%d AND position>=%d AND id<>%d', $data['list_id'], $data['position'], $id));
             }
+            self::sync_task_assignees($id, self::json($data['checklists_json']));
             self::activity($id, $old ? 'updated' : 'created', $old ? 'Cartão atualizado.' : 'Visitante cadastrado.');
             foreach ($flow_events as $event) { self::activity($id, $event['kind'], $event['content']); }
             if ($old && (int)$old['list_id'] !== (int)$data['list_id']) { $l=self::row('lists',(int)$data['list_id']); self::activity($id,'moved','Movido para ' . $l['name'] . '.'); }
@@ -282,6 +303,16 @@ final class Store {
         if (!$u || !$b || !Access::can('access',$user_id) || !Access::can('edit_cards',$user_id)) { return false; }
         if (!Access::admin($u) && $m && $m['role'] === 'viewer') { return false; }
         return Access::admin($u) || Access::can('view_all_boards',$user_id) || $b['visibility'] === 'team' || (int)$b['created_by'] === $user_id || (bool)$m;
+    }
+
+    private static function sync_task_assignees(int $card_id, array $checklists): void {
+        global $wpdb;
+        if ($wpdb->delete(self::table('task_assignees'), ['card_id'=>$card_id]) === false) { throw new HttpError('Não foi possível salvar os responsáveis pelas tarefas.', 500); }
+        $users = [];
+        foreach ($checklists as $list) { foreach ($list['items'] as $item) {
+            if (!empty($item['assigned_to'])) { $users[(int)$item['assigned_to']] = true; }
+        } }
+        foreach (array_keys($users) as $uid) { self::insert('task_assignees', ['card_id'=>$card_id, 'user_id'=>$uid]); }
     }
 
     public static function activity(int $id, string $kind, string $content, ?string $occurred_on = null): void {

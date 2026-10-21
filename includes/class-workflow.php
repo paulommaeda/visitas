@@ -106,6 +106,10 @@ final class Workflow {
             }
             foreach ($list['items'] as &$item) {
                 $count++; $before = $previous[$list['id'].'/'.$item['id']] ?? [];
+                if ((int)$item['assigned_to'] !== (int)($before['assigned_to'] ?? 0)) {
+                    $person = $item['assigned_to'] ? get_userdata($item['assigned_to']) : null;
+                    $events[] = ['kind'=>'checklist_assignment', 'content'=>$list['title'].' / '.$item['text'].': '.($person ? 'Responsável pela tarefa: '.$person->display_name.'.' : 'Responsável pela tarefa removido.')];
+                }
                 $changed_done = (bool)$item['done'] !== (bool)($before['done'] ?? false);
                 foreach (['started_at','completed_at','completed_by','notes_at','notes_by'] as $key) { $item[$key] = $before[$key] ?? null; }
                 $rule = $item['rule'];
@@ -137,7 +141,7 @@ final class Workflow {
                         : ($item['started_at'] ? self::iso(self::add_time(new \DateTimeImmutable($item['started_at']), $rule, $settings)) : null);
                 }
                 if ($settings['enabled'] && !$item['done'] && $active === null) {
-                    $active = ['checklist_id'=>$list['id'], 'item_id'=>$item['id'], 'text'=>$item['text'], 'due_at'=>$item['execution_due_at'], 'started_at'=>$item['started_at']];
+                    $active = ['checklist_id'=>$list['id'], 'item_id'=>$item['id'], 'text'=>$item['text'], 'assigned_to'=>$item['assigned_to'], 'due_at'=>$item['execution_due_at'], 'started_at'=>$item['started_at']];
                 }
             } unset($item);
         } unset($list);

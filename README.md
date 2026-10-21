@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.0**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.1**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.0.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.1.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -64,6 +64,16 @@ No modal, **Registrar visita** salva a data da visita realizada e suas observaç
 Em **Configurações do quadro**, crie campos de texto, texto longo, número, data, seleção e sim/não. Os campos podem ser obrigatórios. Novos campos obrigatórios são exigidos no próximo salvamento completo do cartão. Remover um campo deixa de exibi-lo; uma edição posterior pode remover seu valor do cartão.
 
 Crie modelos de checklist com um passo por linha. Todos os modelos do quadro são copiados para novos cartões. Depois, cada cartão pode ter seus próprios checklists e itens, inclusive aplicar um modelo adicional. Alterar um modelo não altera os checklists dos cartões existentes.
+
+## Responsáveis pelas tarefas
+
+Em **Cartão → Checklists**, escolha o **Responsável pela tarefa** em cada item e clique em **Salvar alterações**. É possível atribuir pessoas diferentes aos passos, trocar a pessoa ou selecionar **Sem responsável**, inclusive com o planejamento automático desativado. Se marcar um check com planejamento ativo, a atribuição também é salva junto com o checklist.
+
+Os **Modelos de checklist** do quadro também permitem definir um responsável padrão por tarefa. Novos cartões recebem uma cópia dessas atribuições; mudar o modelo não altera as pessoas nem o progresso dos cartões existentes. Aplicar um modelo adicional copia seus responsáveis, prazos e orientações.
+
+A seleção apresenta usuários com acesso de edição ao quadro, sem membros de leitura ou pessoas de outros quadros privados. Perfis com acesso restrito aos próprios cartões só podem fazer novas atribuições a si mesmos; atribuições existentes são preservadas ao editar. A pessoa atribuída a uma tarefa passa a ver o cartão, inclusive na listagem e nas contagens do dashboard quando seu perfil permite esse painel, sempre respeitando o acesso ao quadro. Remover a última tarefa atribuída retira esse acesso específico.
+
+O responsável da tarefa é independente do responsável geral do cartão. Checks, observações, datas e automações são preservados ao trocar a pessoa; a mudança fica registrada no histórico. Os lembretes de e-mail/SMS existentes continuam seguindo o responsável geral do cartão.
 
 ## Prazos, ações e atividades dos checklists
 
@@ -178,7 +188,7 @@ O WP-Cron depende das visitas ao site. Para envio pontual em produção, configu
 
 ## Dados, segurança e manutenção
 
-O plugin usa tabelas próprias `visitas_boards`, `visitas_lists`, `visitas_cards`, `visitas_members`, `visitas_activity` e `visitas_notifications`, com o prefixo da instalação. Não usa posts públicos para visitantes. As rotas REST exigem autenticação, nonce para sessões do navegador, permissão de operação e escopo do quadro/cartão. Credenciais do gateway não são enviadas ao navegador e são cifradas com OpenSSL e as chaves do WordPress. Ao trocar as salts do WordPress, salve novamente a senha do gateway.
+O plugin usa tabelas próprias `visitas_boards`, `visitas_lists`, `visitas_cards`, `visitas_members`, `visitas_activity`, `visitas_notifications` e o índice `visitas_task_assignees`, com o prefixo da instalação. Não usa posts públicos para visitantes. As rotas REST exigem autenticação, nonce para sessões do navegador, permissão de operação e escopo do quadro/cartão. Credenciais do gateway não são enviadas ao navegador e são cifradas com OpenSSL e as chaves do WordPress. Ao trocar as salts do WordPress, salve novamente a senha do gateway.
 
 O portal envia cabeçalhos de conteúdo privado e não indexável. Exclua a página do portal e `?visitas_app=1` do cache da hospedagem/CDN. Faça backup do banco, configurações e uploads antes de atualizações.
 
@@ -189,7 +199,7 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py dist/visitas-1.2.0.zip
+python3 bin/build.py dist/visitas-1.2.1.zip
 ```
 
 O script extrai a versão e os requisitos dos cabeçalhos e gera também `dist/update.json`, com URL do ZIP, histórico e SHA-256. Publique o código, o ZIP e o manifesto juntos em `main`. Mantenha os ZIPs anteriores disponíveis para instalações que ainda tenham uma oferta em cache. Não altere um ZIP já publicado; aumente a versão para cada lançamento.
@@ -200,6 +210,7 @@ Testes devem rodar em um WordPress descartável. Nunca use dados reais ou uma in
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/integration.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/dashboard.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/workflow.php
+VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/task-assignees.php
 ```
 
 O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPress descartável com o plugin ativado. Configure `TEST_BASE_URL`, `TEST_ADMIN_USER` e `TEST_ADMIN_PASSWORD`. Opcionalmente, informe `VISITAS_PHP`, `VISITAS_PHP_INI` e `VISITAS_WP_ROOT` para o teste iniciar o servidor PHP. `CHROMIUM_PATH` e `PLAYWRIGHT_PATH` permitem usar runtimes já instalados.
@@ -227,3 +238,5 @@ Validação da versão 1.1.0: 88 verificações de integração e 66 do dashboar
 Validação da versão 1.2.0: cálculo cumulativo de dias úteis, calendários personalizados, feriados, horas fracionárias, datas de conclusão, ações de lista e lembretes por etapa cobertos por 73 verificações de workflow. A interface foi testada no computador e celular, incluindo configuração dos modelos, observações obrigatórias, uma única gravação por check, preservação de rascunhos do cadastro, recuperação de falhas e aplicação explícita de novas regras sem perder o progresso. Serviços externos foram simulados.
 
 Na mesma validação 1.2.0, passaram as 88 verificações de integração e as 66 do dashboard (227 verificações de servidor no total), além dos fluxos de interface anteriores. A atualização nativa desde a versão publicada 1.1.0 foi testada preservando cartões, prazos manuais, modelos, checks já concluídos, histórico, identidade e permissões personalizadas. O planejamento dos cartões antigos permanece manual até a aplicação explícita das novas regras.
+
+Validação da versão 1.2.1: 49 verificações específicas de responsáveis por tarefa, além das 227 verificações anteriores de integração, dashboard e workflow. A interface foi conferida no computador e celular para seleção, remoção, herança de modelos e preservação dos checks, observações e prazos. A atualização nativa desde o ZIP publicado 1.2.0 foi validada em instalação isolada, preservando dados, identidade e permissões. Todos os envios externos foram bloqueados nos testes.

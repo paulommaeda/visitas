@@ -4,7 +4,7 @@ delete_site_transient('visitas_update_manifest');
 if (!defined('VISITAS_DELETE_DATA') || VISITAS_DELETE_DATA !== true) { return; }
 global $wpdb;
 wp_clear_scheduled_hook('visitas_queue'); wp_clear_scheduled_hook('visitas_due');
-foreach (['notifications','activity','members','cards','lists','boards'] as $table) { $wpdb->query('DROP TABLE IF EXISTS `'.esc_sql($wpdb->prefix.'visitas_'.$table).'`'); }
+foreach (['notifications','activity','task_assignees','members','cards','lists','boards'] as $table) { $wpdb->query('DROP TABLE IF EXISTS `'.esc_sql($wpdb->prefix.'visitas_'.$table).'`'); }
 foreach (wp_roles()->roles as $key=>$role) {
     if (str_starts_with($key,'visitas_')) { remove_role($key); }
     elseif ($key==='administrator') { $r=get_role($key); foreach ($role['capabilities'] as $cap=>$grant) { if (str_starts_with($cap,'visitas_')) { $r->remove_cap($cap); } } }
