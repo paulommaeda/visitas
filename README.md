@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.1.0**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.0**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.1.0.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.0.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -34,9 +34,9 @@ Filtre por mês e quadro ou marque **Todos os meses**. Cartões arquivados ficam
 | Indicador | Critério |
 | --- | --- |
 | Visitantes no período | Data da primeira visita; quando não preenchida, data do cadastro no fuso horário do WordPress |
-| Pessoas acompanhadas | Pessoas com ao menos uma interação ou visita realizada no mês, inclusive quem chegou antes; várias visitas ao mesmo cartão contam uma pessoa |
+| Pessoas acompanhadas | Pessoas com ao menos uma interação, observação de checklist ou visita realizada no mês, inclusive quem chegou antes; várias visitas ao mesmo cartão contam uma pessoa |
 | Visitas registradas | Número de registros do tipo visita realizada; o indicador também informa o número de pessoas distintas visitadas |
-| Prazos em atraso | Visitantes do período com prazo vencido e acompanhamento ainda não concluído, considerando a data atual |
+| Prazos em atraso | Visitantes do período com prazo de etapa ou entrega final vencido e acompanhamento ainda não concluído, considerando a data atual |
 | Pessoas por etapa | Lista atual dos visitantes do período; não é uma fotografia histórica da posição do cartão naquele mês |
 
 Clique em um indicador ou etapa para ver a lista de pessoas, com busca por nome, telefone e e-mail e paginação. Abra o visitante para consultar contatos, responsável, etapa, observações do cadastro e todo o histórico de visitas e interações. O gráfico mensal compara visitantes e pessoas acompanhadas em seis meses, e os últimos registros permitem abrir diretamente o visitante.
@@ -64,6 +64,50 @@ No modal, **Registrar visita** salva a data da visita realizada e suas observaç
 Em **Configurações do quadro**, crie campos de texto, texto longo, número, data, seleção e sim/não. Os campos podem ser obrigatórios. Novos campos obrigatórios são exigidos no próximo salvamento completo do cartão. Remover um campo deixa de exibi-lo; uma edição posterior pode remover seu valor do cartão.
 
 Crie modelos de checklist com um passo por linha. Todos os modelos do quadro são copiados para novos cartões. Depois, cada cartão pode ter seus próprios checklists e itens, inclusive aplicar um modelo adicional. Alterar um modelo não altera os checklists dos cartões existentes.
+
+## Prazos, ações e atividades dos checklists
+
+Em **Configurações do quadro → Planejamento e automações dos checklists**, ative o planejamento para novos cartões. Nos **Modelos de checklist**, adicione e ordene os passos. Cada passo possui:
+
+- Tempo de execução em horas, dias corridos ou dias úteis; zero deixa o passo sem prazo.
+- Ação ao concluir: manter o cartão na lista atual ou movê-lo para uma lista do mesmo quadro.
+- Atividade/orientação a executar e observação opcional ou obrigatória ao concluir.
+- Datas previstas, prazo de execução e data/autor da conclusão na cópia do cartão.
+
+Cada checklist também tem atividades previstas e um campo próprio de atividades/observações. O nome desse campo e sua exibição são configuráveis no quadro. Os registros de observações guardam autor e horário no histórico do cartão e aparecem no acompanhamento do visitante no dashboard.
+
+### Previsão final e prazo da etapa
+
+A **entrega final prevista** soma os prazos dos itens de todos os checklists, na ordem em que aparecem, a partir da data e hora de criação do cartão. Os itens concluídos continuam participando dessa soma. A previsão final permanece vinculada ao cadastro e as datas reais de conclusão são registradas separadamente.
+
+Exemplo com três listas e um passo de três dias úteis em cada etapa:
+
+| Passo | Tempo | Ao concluir |
+| --- | --- | --- |
+| Cadastro | 3 dias úteis | Mover para Contato |
+| Primeiro contato | 3 dias úteis | Mover para Integração |
+| Integração | 3 dias úteis | Manter na lista; concluir o cartão se essa opção estiver habilitada |
+
+A previsão final é de **9 dias úteis a partir do cadastro**. Listas sozinhas não acrescentam tempo; os prazos são definidos nos passos dos checklists. Use zero nos checks que devem apenas executar uma ação.
+
+Configure o **prazo de execução de cada etapa** em um dos modos:
+
+- **A partir do início da etapa:** o primeiro item pendente começa ao cadastrar; o seguinte começa ao concluir o anterior, com seu próprio tempo de execução.
+- **Seguir o cronograma desde o cadastro:** cada item usa sua data cumulativa prevista, calculada a partir da criação do cartão.
+
+A etapa atual é o primeiro item pendente na ordem dos checklists. O cartão mostra separadamente o prazo dessa etapa e a previsão final. A opção **Usar a soma dos checklists como entrega final do cartão** preenche automaticamente o prazo geral; ela pode ser desativada para manter um prazo geral manual. Indicadores de atraso e lembretes consideram o primeiro vencimento entre a etapa atual e a entrega final.
+
+Dias úteis usam, por padrão, segunda a sexta. Em **Calendário de dias úteis**, personalize os dias da semana e cadastre feriados/dias sem expediente, um por linha no formato `DD/MM/AAAA`. Somente os feriados cadastrados são descontados. O dia inicial não conta como primeiro dia do prazo, e a hora local é preservada nos prazos em dias. Horas são corridas. O calendário e o fuso horário são copiados para cada cartão ao aplicar o planejamento.
+
+### Concluir e acompanhar os passos
+
+Nos cartões com planejamento ativo, marcar ou desmarcar um item salva os checklists imediatamente. A conclusão aplica o destino configurado e inicia o próximo passo. As outras edições do cadastro permanecem no botão **Salvar alterações**. Check, movimentação e histórico são gravados em uma única operação. Conflitos de edição exigem reabrir o cartão.
+
+A opção **Concluir os passos na ordem** impede pular etapas. Se estiver desativada e vários itens forem concluídos em um único salvamento, prevalece a ação do último item na ordem. Desmarcar um check registra a reabertura e mantém a lista atual. Uma nova conclusão pode executar a ação novamente. Apenas salvar um item já concluído não repete sua movimentação. A conclusão automática do cartão é opcional.
+
+Os modelos e calendários atualizados valem para novos cartões. Nos existentes, **Aplicar planejamento atual do quadro** atualiza as regras dos mesmos passos e o calendário, mantendo checks, observações e datas de conclusão. Modelos adicionais podem ser aplicados pelo seletor do cartão. **Usar prazos manuais neste cartão** desativa suas ações e seu cronograma automático, preservando a última entrega geral para edição manual. As cópias dos demais cartões permanecem independentes.
+
+Para excluir uma lista usada como destino de uma ação, remova primeiro essa referência dos modelos e dos cartões, inclusive arquivados. As regras e mudanças de lista respeitam as mesmas permissões de edição do cartão.
 
 ## Acesso e perfis
 
@@ -145,7 +189,7 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py dist/visitas-1.1.0.zip
+python3 bin/build.py dist/visitas-1.2.0.zip
 ```
 
 O script extrai a versão e os requisitos dos cabeçalhos e gera também `dist/update.json`, com URL do ZIP, histórico e SHA-256. Publique o código, o ZIP e o manifesto juntos em `main`. Mantenha os ZIPs anteriores disponíveis para instalações que ainda tenham uma oferta em cache. Não altere um ZIP já publicado; aumente a versão para cada lançamento.
@@ -155,9 +199,12 @@ Testes devem rodar em um WordPress descartável. Nunca use dados reais ou uma in
 ```bash
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/integration.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/dashboard.php
+VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/workflow.php
 ```
 
 O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPress descartável com o plugin ativado. Configure `TEST_BASE_URL`, `TEST_ADMIN_USER` e `TEST_ADMIN_PASSWORD`. Opcionalmente, informe `VISITAS_PHP`, `VISITAS_PHP_INI` e `VISITAS_WP_ROOT` para o teste iniciar o servidor PHP. `CHROMIUM_PATH` e `PLAYWRIGHT_PATH` permitem usar runtimes já instalados.
+
+`tests/workflow-browser.cjs` usa o mesmo ambiente para configurar e executar os modelos, validar movimentações automáticas, prazos, observações e salvamento no celular.
 
 `tests/dashboard-browser.cjs` usa o mesmo ambiente para validar filtros, indicadores, listas por etapa, busca, modal de visitantes e registro de visitas em desktop e celular. O teste cria dados fictícios de seis meses. `tests/dashboard.php` valida os números, a paginação, as permissões, a migração dos perfis e os limites de mês no fuso horário do WordPress.
 
@@ -176,3 +223,7 @@ Validação da versão 1.0.1: 88 verificações de integração aprovadas. O nav
 Validação da versão 1.0.2: 88 verificações de regressão e 36 do atualizador aprovadas em WordPress 7.1.3/PHP 8.3.6. Foram testados cache, indisponibilidade, manifesto inválido, permissões, nonce, integridade do pacote e atualização nativa preservando os dados. O navegador validou a tela em desktop e celular, consulta manual, detalhes da versão e Atualizar agora até a reabertura do portal, com GitHub e demais serviços simulados.
 
 Validação da versão 1.1.0: 88 verificações de integração e 66 do dashboard aprovadas em WordPress 7.1.3/PHP 8.3.6. Os testes de interface cobriram filtros mensais, contagem de pessoas sem duplicar visitas, modal, histórico, cartão completo e salvamento de visitas no celular. A atualização nativa desde o ZIP publicado 1.0.2 foi validada em instalação isolada, preservando cartões, checklists, quadros, interações, configurações, ativação e permissões já personalizadas. Todos os serviços externos foram interceptados nos testes.
+
+Validação da versão 1.2.0: cálculo cumulativo de dias úteis, calendários personalizados, feriados, horas fracionárias, datas de conclusão, ações de lista e lembretes por etapa cobertos por 73 verificações de workflow. A interface foi testada no computador e celular, incluindo configuração dos modelos, observações obrigatórias, uma única gravação por check, preservação de rascunhos do cadastro, recuperação de falhas e aplicação explícita de novas regras sem perder o progresso. Serviços externos foram simulados.
+
+Na mesma validação 1.2.0, passaram as 88 verificações de integração e as 66 do dashboard (227 verificações de servidor no total), além dos fluxos de interface anteriores. A atualização nativa desde a versão publicada 1.1.0 foi testada preservando cartões, prazos manuais, modelos, checks já concluídos, histórico, identidade e permissões personalizadas. O planejamento dos cartões antigos permanece manual até a aplicação explícita das novas regras.

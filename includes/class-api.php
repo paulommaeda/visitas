@@ -17,7 +17,7 @@ final class Api {
         self::route('/boards/(?P<id>\d+)/cards','GET',[self::class,'cards']);
         self::route('/cards','POST',static fn($r)=>Store::save_card(self::body($r)));
         self::route('/cards/(?P<id>\d+)','GET',[self::class,'card']);
-        self::route('/cards/(?P<id>\d+)','PATCH',static fn($r)=>Store::save_card(self::body($r),Access::card((int)$r['id'],'edit_cards')));
+        self::route('/cards/(?P<id>\d+)','PATCH',[self::class,'save_card']);
         self::route('/cards/(?P<id>\d+)','DELETE',[self::class,'delete_card']);
         self::route('/cards/(?P<id>\d+)/comments','POST',[self::class,'comment']);
         self::route('/cards/(?P<id>\d+)/followups','GET',[Dashboard::class,'followups']);
@@ -69,7 +69,7 @@ final class Api {
         $boards=[];
         foreach ($wpdb->get_results('SELECT * FROM '.Store::table('boards').' ORDER BY name',ARRAY_A) as $b) {
             try { Access::board((int)$b['id']); } catch (HttpError $e) { continue; }
-            $stats=$wpdb->get_row($wpdb->prepare('SELECT COUNT(*) AS total, SUM(completed=1) AS completed, SUM(completed=0 AND due_at<%s) AS overdue FROM '.Store::table('cards').' WHERE board_id=%d AND archived=0'.self::card_scope(),current_time('mysql',true),$b['id']),ARRAY_A);
+            $stats=$wpdb->get_row($wpdb->prepare('SELECT COUNT(*) AS total, SUM(completed=1) AS completed, SUM(completed=0 AND '.Workflow::deadline_sql().'<%s) AS overdue FROM '.Store::table('cards').' WHERE board_id=%d AND archived=0'.self::card_scope(),current_time('mysql',true),$b['id']),ARRAY_A);
             $boards[]=['id'=>(int)$b['id'],'name'=>$b['name'],'description'=>$b['description'],'color'=>$b['color'],'visibility'=>$b['visibility'],'stats'=>$stats];
         }
         $u=wp_get_current_user(); $caps=[];
@@ -97,7 +97,11 @@ final class Api {
             $data['initial_list_id']=(int)$l['id'];
         }
         if (isset($in['fields'])) { $data['schema_json']=wp_json_encode(Store::schema((array)$in['fields'])); }
-        if (isset($in['templates'])) { $data['templates_json']=wp_json_encode(Store::checklists((array)$in['templates'],true)); }
+        if (isset($in['templates'])) { $data['templates_json']=wp_json_encode(Store::checklists((array)$in['templates'],true,(int)$b['id'],Store::json($b['templates_json']))); }
+        if (isset($in['workflow'])) {
+            if (!is_array($in['workflow'])) { throw new HttpError('Configuração de planejamento inválida.',422); }
+            $data['workflow_json']=wp_json_encode(Workflow::settings($in['workflow']));
+        }
         $members=[];
         if (isset($in['members'])) {
             foreach (array_slice((array)$in['members'],0,500) as $m) {
@@ -151,6 +155,15 @@ final class Api {
         $b=Access::board((int)$l['board_id'],true);
         if ((int)$b['initial_list_id']===(int)$l['id']) { throw new HttpError('Defina outra lista inicial antes de excluir esta lista.',409); }
         if ($wpdb->get_var($wpdb->prepare('SELECT id FROM '.Store::table('cards').' WHERE list_id=%d LIMIT 1',$l['id']))) { throw new HttpError('Mova ou exclua os cartões desta lista antes de excluí-la.',409); }
+        if (Workflow::references_list(Store::json($b['templates_json']), (int)$l['id'])) { throw new HttpError('Esta lista é destino de um checklist. Altere as ações dos modelos antes de excluí-la.',409); }
+        $last = 0;
+        do {
+            $batch = $wpdb->get_results($wpdb->prepare('SELECT id,checklists_json FROM '.Store::table('cards').' WHERE board_id=%d AND id>%d ORDER BY id LIMIT 100',$b['id'],$last),ARRAY_A);
+            foreach ($batch as $card) {
+                if (Workflow::references_list(Store::json($card['checklists_json']), (int)$l['id'])) { throw new HttpError('Esta lista é destino de um checklist de cartão. Altere as ações antes de excluí-la.',409); }
+                $last = (int)$card['id'];
+            }
+        } while (count($batch) === 100);
         $wpdb->delete(Store::table('lists'),['id'=>$l['id']]); return ['deleted'=>true];
     }
 
@@ -172,6 +185,17 @@ final class Api {
         $activities=$wpdb->get_results($wpdb->prepare('SELECT * FROM '.Store::table('activity').' WHERE card_id=%d ORDER BY id DESC LIMIT 51 OFFSET %d',$c['id'],($page-1)*50),ARRAY_A);
         $c['activity_more']=count($activities)>50; $c['activity']=array_slice($activities,0,50);
         return $c;
+    }
+
+    public static function save_card($r): array {
+        global $wpdb;
+        $input = self::body($r);
+        $card = Store::save_card($input, Access::card((int)$r['id'],'edit_cards'));
+        if (array_key_exists('checklists',$input) || !empty($input['use_board_workflow']) || !empty($input['disable_workflow'])) {
+            $rows = $wpdb->get_results($wpdb->prepare('SELECT * FROM '.Store::table('activity').' WHERE card_id=%d ORDER BY id DESC LIMIT 51', $card['id']), ARRAY_A);
+            $card['activity'] = array_slice($rows, 0, 50); $card['activity_more'] = count($rows) > 50;
+        }
+        return $card;
     }
 
     public static function delete_card($r): array {

@@ -89,7 +89,8 @@ final class Store {
         global $wpdb;
         $b['fields'] = self::json($b['schema_json']);
         $b['templates'] = self::json($b['templates_json']);
-        unset($b['schema_json'], $b['templates_json']);
+        $b['workflow'] = Workflow::settings(self::json($b['workflow_json'] ?? ''));
+        unset($b['schema_json'], $b['templates_json'], $b['workflow_json']);
         $b['lists'] = self::lists((int) $b['id']);
         $b['can_manage'] = false;
         try { Access::board((int) $b['id'], true); $b['can_manage'] = true; } catch (HttpError $e) {}
@@ -114,19 +115,27 @@ final class Store {
         return $clean;
     }
 
-    public static function checklists(array $lists, bool $template = false): array {
+    public static function checklists(array $lists, bool $template = false, ?int $board_id = null, array $previous = []): array {
         $clean = []; $ids = [];
+        $old_lists = array_column($previous, null, 'id');
         foreach (array_slice($lists, 0, 20) as $list) {
             $id = sanitize_key($list['id'] ?? wp_generate_uuid4());
             if (!$id || isset($ids[$id])) { throw new HttpError('Os checklists precisam de identificadores únicos.', 422); }
             $ids[$id] = true; $items = []; $item_ids = [];
+            $old_list = $old_lists[$id] ?? []; $old_items = array_column($old_list['items'] ?? [], null, 'id');
             foreach (array_slice((array) ($list['items'] ?? []), 0, 100) as $item) {
                 $iid = sanitize_key($item['id'] ?? wp_generate_uuid4());
                 if (!$iid || isset($item_ids[$iid])) { throw new HttpError('Os itens precisam de identificadores únicos.', 422); }
                 $item_ids[$iid] = true;
-                $items[] = ['id'=>$iid,'text'=>self::name($item['text'] ?? ''),'done'=>$template ? false : !empty($item['done'])];
+                $before = $old_items[$iid] ?? [];
+                $rule = $item['rule'] ?? ($before['rule'] ?? []);
+                if (!is_array($rule)) { throw new HttpError('Regra de checklist inválida.', 422); }
+                $items[] = ['id'=>$iid,'text'=>self::name($item['text'] ?? ''),'done'=>$template ? false : rest_sanitize_boolean($item['done'] ?? false),
+                    'rule'=>Workflow::rule($rule, $board_id), 'instructions'=>Workflow::text($item['instructions'] ?? $before['instructions'] ?? '', 4000),
+                    'notes'=>$template ? '' : Workflow::text($item['notes'] ?? $before['notes'] ?? '', 8000)];
             }
-            $clean[] = ['id'=>$id,'title'=>self::name($list['title'] ?? ''),'items'=>$items];
+            $clean[] = ['id'=>$id,'title'=>self::name($list['title'] ?? ''),'description'=>Workflow::text($list['description'] ?? $old_list['description'] ?? '', 4000),
+                'notes'=>$template ? '' : Workflow::text($list['notes'] ?? $old_list['notes'] ?? '', 8000), 'items'=>$items];
         }
         return $clean;
     }
@@ -174,7 +183,8 @@ final class Store {
 
     public static function card_data(array $c): array {
         foreach (['labels','attributes','checklists'] as $key) { $c[$key] = self::json($c[$key . '_json']); unset($c[$key . '_json']); }
-        foreach (['start_at','due_at','created_at','updated_at'] as $key) { if ($c[$key]) { $c[$key] = str_replace(' ','T',$c[$key]) . 'Z'; } }
+        $c['workflow'] = self::json($c['workflow_json'] ?? ''); unset($c['workflow_json']);
+        foreach (['start_at','due_at','step_due_at','created_at','updated_at'] as $key) { if ($c[$key] ?? null) { $c[$key] = str_replace(' ','T',$c[$key]) . 'Z'; } }
         return $c;
     }
 
@@ -182,11 +192,15 @@ final class Store {
         global $wpdb;
         $b = Access::board_write((int) ($old['board_id'] ?? $input['board_id'] ?? 0), $old ? 'edit_cards' : 'create_cards');
         $board_id = (int) $b['id'];
-        $data = $old ? array_intersect_key($old, array_flip(['title','email','phone','birthday','visit_date','start_at','due_at','completed','archived','assigned_to','description','source','address','consent_email','consent_sms','labels_json','attributes_json','checklists_json','list_id','position'])) : [
+        if ($old && (!isset($input['version']) || (int)$input['version'] !== (int)$old['version'])) {
+            throw new HttpError('Este cartão foi alterado. Feche e abra novamente para carregar a versão atual.', 409);
+        }
+        $now = current_time('mysql', true); $flow_events = [];
+        $data = $old ? array_intersect_key($old, array_flip(['title','email','phone','birthday','visit_date','start_at','due_at','step_due_at','workflow_json','completed','archived','assigned_to','description','source','address','consent_email','consent_sms','labels_json','attributes_json','checklists_json','list_id','position'])) : [
             'list_id'=>(int) $b['initial_list_id'], 'position'=>1000, 'email'=>'', 'phone'=>'', 'birthday'=>null,
-            'visit_date'=>current_time('Y-m-d'), 'start_at'=>null, 'due_at'=>null, 'completed'=>0, 'archived'=>0,
+            'visit_date'=>current_time('Y-m-d'), 'start_at'=>null, 'due_at'=>null, 'step_due_at'=>null, 'workflow_json'=>null, 'completed'=>0, 'archived'=>0,
             'assigned_to'=>0, 'description'=>'', 'source'=>'', 'address'=>'', 'consent_email'=>0, 'consent_sms'=>0,
-            'labels_json'=>'[]', 'attributes_json'=>'{}', 'checklists_json'=>wp_json_encode(self::checklists(self::json($b['templates_json']))),
+            'labels_json'=>'[]', 'attributes_json'=>'{}', 'checklists_json'=>wp_json_encode(self::checklists(self::json($b['templates_json']), false, $board_id)),
         ];
         if (!$old || array_key_exists('title', $input)) { $data['title'] = self::name($input['title'] ?? ''); }
         foreach (['email','phone','source','description','address'] as $k) {
@@ -199,7 +213,6 @@ final class Store {
         }
         foreach (['birthday','visit_date'] as $k) { if (array_key_exists($k,$input)) { $data[$k] = self::date((string) $input[$k]); } }
         foreach (['start_at','due_at'] as $k) { if (array_key_exists($k,$input)) { $data[$k] = self::datetime((string) $input[$k]); } }
-        if ($data['start_at'] && $data['due_at'] && $data['due_at'] < $data['start_at']) { throw new HttpError('O prazo não pode ser anterior à data inicial.', 422); }
         foreach (['completed','archived','consent_email','consent_sms'] as $k) { if (array_key_exists($k,$input)) { $data[$k] = (int) rest_sanitize_boolean($input[$k]); } }
         if (array_key_exists('assigned_to',$input)) {
             $uid = absint($input['assigned_to']);
@@ -216,7 +229,21 @@ final class Store {
         if (!$list || (int) $list['board_id'] !== $board_id) { throw new HttpError('A lista não pertence ao quadro.', 422); }
         if (array_key_exists('labels',$input)) { $data['labels_json'] = wp_json_encode(array_values(array_unique(array_filter(array_map(static fn($s)=>sanitize_text_field(substr((string)$s,0,40)), array_slice((array)$input['labels'],0,12)))))); }
         if (!$old || array_key_exists('attributes',$input)) { $data['attributes_json'] = wp_json_encode(self::attributes((array)($input['attributes'] ?? []), self::json($b['schema_json']))); }
-        if (array_key_exists('checklists',$input)) { $data['checklists_json'] = wp_json_encode(self::checklists((array)$input['checklists'])); }
+        if (array_key_exists('checklists',$input)) { $data['checklists_json'] = wp_json_encode(self::checklists((array)$input['checklists'], false, $board_id, $old ? self::json($old['checklists_json']) : [])); }
+        if (!$old || array_key_exists('checklists',$input) || !empty($input['use_board_workflow']) || !empty($input['disable_workflow'])) {
+            $lists = self::checklists(self::json($data['checklists_json']), false, $board_id, $old ? self::json($old['checklists_json']) : []);
+            $flow = Workflow::apply($lists, $old, $b, $now, !empty($input['use_board_workflow']), !empty($input['disable_workflow']));
+            $data['checklists_json'] = wp_json_encode($flow['checklists']);
+            $data['workflow_json'] = wp_json_encode($flow['workflow']); $data['step_due_at'] = $flow['step_due_at'];
+            $flow_events = $flow['events'];
+            if ($flow['target_list_id']) { $data['list_id'] = $flow['target_list_id']; }
+            if ($flow['complete'] !== null) { $data['completed'] = (int)$flow['complete']; }
+        }
+        $workflow = self::json($data['workflow_json'] ?? '');
+        if (!empty($workflow['enabled']) && !empty($workflow['sync_due']) && !empty($workflow['planned_due_at'])) {
+            $data['due_at'] = (new \DateTimeImmutable($workflow['planned_due_at']))->format('Y-m-d H:i:s');
+        }
+        if ($data['start_at'] && $data['due_at'] && $data['due_at'] < $data['start_at']) { throw new HttpError('O prazo não pode ser anterior à data inicial.', 422); }
         if (!$old || (int) $data['list_id'] !== (int) $old['list_id'] || isset($input['before_id'])) {
             $before = !empty($input['before_id']) ? self::row('cards', absint($input['before_id'])) : null;
             if ($before && ((int)$before['board_id'] !== $board_id || (int)$before['list_id'] !== (int)$data['list_id'] || !Access::sees_card($before) || ($old && $before['id'] === $old['id']))) {
@@ -225,8 +252,7 @@ final class Store {
             // Integer positions are shifted only at the destination; no hidden-card identifiers are exposed.
             $data['position'] = $before ? (int)$before['position'] : (int)$wpdb->get_var($wpdb->prepare('SELECT COALESCE(MAX(position),0)+1000 FROM ' . self::table('cards') . ' WHERE list_id=%d', $data['list_id']));
         }
-        $now = current_time('mysql', true);
-        $id = self::transaction(static function () use ($old,$input,$data,$now,$board_id) {
+        $id = self::transaction(static function () use ($old,$input,$data,$now,$board_id,$flow_events) {
             global $wpdb;
             if ($old) {
                 if (!isset($input['version']) || (int)$input['version'] !== (int)$old['version']) { throw new HttpError('Este cartão foi alterado. Feche e abra novamente para carregar a versão atual.', 409); }
@@ -240,6 +266,7 @@ final class Store {
                 $wpdb->query($wpdb->prepare('UPDATE ' . self::table('cards') . ' SET position=position+1 WHERE list_id=%d AND position>=%d AND id<>%d', $data['list_id'], $data['position'], $id));
             }
             self::activity($id, $old ? 'updated' : 'created', $old ? 'Cartão atualizado.' : 'Visitante cadastrado.');
+            foreach ($flow_events as $event) { self::activity($id, $event['kind'], $event['content']); }
             if ($old && (int)$old['list_id'] !== (int)$data['list_id']) { $l=self::row('lists',(int)$data['list_id']); self::activity($id,'moved','Movido para ' . $l['name'] . '.'); }
             if ($old && ((int)$old['consent_email'] !== (int)$data['consent_email'] || (int)$old['consent_sms'] !== (int)$data['consent_sms'])) { self::activity($id,'consent','Preferências de comunicação atualizadas.'); }
             return $id;

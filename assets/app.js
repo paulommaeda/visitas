@@ -10,6 +10,7 @@
   V.uid = () => window.crypto?.randomUUID?.() || ('v' + Date.now().toString(36) + Math.random().toString(36).slice(2));
   V.cap = cap => !!V.data?.capabilities[cap];
   V.staff = id => V.data?.staff.find(u => +u.id === +id);
+  V.deadline = c => c.step_due_at && (!c.due_at || c.step_due_at < c.due_at) ? c.step_due_at : c.due_at;
   V.initials = name => String(name || '?').trim().split(/\s+/).slice(0, 2).map(n => n[0]).join('').toUpperCase();
   V.avatar = (name, small = false) => `<span class="v-avatar ${small ? 'v-avatar-sm' : ''}" title="${V.e(name)}">${V.e(V.initials(name))}</span>`;
   V.icon = name => {
@@ -132,7 +133,7 @@
     if (q && !hay.includes(q)) return false;
     if (f.assigned === 'none' && +c.assigned_to) return false;
     if (f.assigned && f.assigned !== 'none' && +c.assigned_to !== +f.assigned) return false;
-    const due = c.due_at ? new Date(c.due_at).getTime() : 0;
+    const due = V.deadline(c) ? new Date(V.deadline(c)).getTime() : 0;
     if (f.due === 'overdue' && (!due || due >= Date.now() || +c.completed)) return false;
     if (f.due === 'soon' && (!due || due < Date.now() || due > Date.now() + 7 * 86400000 || +c.completed)) return false;
     if (f.due === 'completed' && !+c.completed) return false;
@@ -140,9 +141,9 @@
   });
   V.cardHTML = c => {
     const u = V.staff(c.assigned_to), done = c.checklists.flatMap(x => x.items).filter(i => i.done).length, total = c.checklists.flatMap(x => x.items).length;
-    const overdue = c.due_at && new Date(c.due_at) < new Date() && !+c.completed;
+    const overdue = V.deadline(c) && new Date(V.deadline(c)) < new Date() && !+c.completed;
     const pending = V.pendingMoves.has(+c.id), edit = V.cap('edit_cards') && !V.board.read_only;
-    return `<article class="v-card ${+c.completed ? 'v-card-completed' : ''} ${pending ? 'v-card-saving' : ''}" data-card="${c.id}" draggable="${edit && !pending}" aria-busy="${pending}"><button class="v-card-open" data-action="card" data-id="${c.id}" ${pending ? 'disabled' : ''}>${c.labels.length ? `<div class="v-card-labels">${c.labels.map((l, i) => `<span class="v-label v-label-${i % 4}">${V.e(l)}</span>`).join('')}</div>` : ''}<div class="v-card-title">${V.e(c.title)}</div>${c.source ? `<p class="v-card-source">${V.e(c.source)}</p>` : ''}${c.description ? `<p class="v-card-description">${V.e(c.description.slice(0, 100))}</p>` : ''}<div class="v-card-meta">${c.due_at ? `<span class="v-badge ${+c.completed ? 'v-badge-done' : overdue ? 'v-badge-overdue' : ''}">${V.icon(+c.completed ? 'check' : 'clock')}${V.date(c.due_at)}</span>` : (+c.completed ? '<span class="v-badge v-badge-done">Concluído</span>' : '')}${total ? `<span class="v-check-progress ${done === total ? 'v-progress-done' : ''}">${V.icon('checklist')}${done}/${total}</span>` : ''}${u ? V.avatar(u.name, true) : '<span class="v-no-assignee" title="Sem responsável">—</span>'}</div>${pending ? '<span class="v-move-status" role="status">Salvando movimentação…</span>' : ''}</button></article>`;
+    return `<article class="v-card ${+c.completed ? 'v-card-completed' : ''} ${pending ? 'v-card-saving' : ''}" data-card="${c.id}" draggable="${edit && !pending}" aria-busy="${pending}"><button class="v-card-open" data-action="card" data-id="${c.id}" ${pending ? 'disabled' : ''}>${c.labels.length ? `<div class="v-card-labels">${c.labels.map((l, i) => `<span class="v-label v-label-${i % 4}">${V.e(l)}</span>`).join('')}</div>` : ''}<div class="v-card-title">${V.e(c.title)}</div>${c.source ? `<p class="v-card-source">${V.e(c.source)}</p>` : ''}${c.description ? `<p class="v-card-description">${V.e(c.description.slice(0, 100))}</p>` : ''}<div class="v-card-meta">${V.deadline(c) ? `<span class="v-badge ${+c.completed ? 'v-badge-done' : overdue ? 'v-badge-overdue' : ''}">${V.icon(+c.completed ? 'check' : 'clock')}${V.date(V.deadline(c))}</span>` : (+c.completed ? '<span class="v-badge v-badge-done">Concluído</span>' : '')}${total ? `<span class="v-check-progress ${done === total ? 'v-progress-done' : ''}">${V.icon('checklist')}${done}/${total}</span>` : ''}${u ? V.avatar(u.name, true) : '<span class="v-no-assignee" title="Sem responsável">—</span>'}</div>${pending ? '<span class="v-move-status" role="status">Salvando movimentação…</span>' : ''}</button></article>`;
   };
 
   V.placeCard = (id, listId, beforeId = 0, afterId = 0) => {
@@ -259,7 +260,7 @@
   V.renderBoard = () => {
     const b = V.board, cards = V.cards;
     V.$('#v-crumb').textContent = b.name;
-    const overdue = cards.filter(c => c.due_at && new Date(c.due_at) < new Date() && !+c.completed).length;
+    const overdue = cards.filter(c => V.deadline(c) && new Date(V.deadline(c)) < new Date() && !+c.completed).length;
     const done = cards.filter(c => +c.completed).length;
     V.$('#v-content').innerHTML = `<section class="v-board-header"><div><p class="v-eyebrow v-primary-text">ACOLHIMENTO & RELACIONAMENTO</p><h1>${V.e(b.name)}</h1><p class="v-muted">${V.e(b.description || 'Um espaço para acompanhar cada próximo passo.')}</p></div><div class="v-board-actions">${b.can_manage ? V.button('board-settings', '<span class="v-sr">Configurar quadro</span>', 'settings', 'v-icon-btn') : ''}${V.cap('create_cards') && !b.read_only ? V.button('new-card', 'Novo visitante', 'plus', 'v-primary') : ''}</div></section><section class="v-stats" aria-label="Resumo do quadro"><div><span class="v-stat-icon">${V.icon('people')}</span><span><strong>${cards.length}</strong><small>${V.filters.archived ? 'Arquivados' : 'Visitantes no quadro'}</small></span></div><div><span class="v-stat-icon v-stat-amber">${V.icon('clock')}</span><span><strong>${overdue}</strong><small>Precisam de atenção</small></span></div><div><span class="v-stat-icon v-stat-green">${V.icon('check')}</span><span><strong>${done}</strong><small>Acompanhamentos concluídos</small></span></div><div class="v-board-privacy">${V.icon(b.visibility === 'private' ? 'lock' : 'people')}<span>${b.visibility === 'private' ? 'Quadro privado' : 'Compartilhado com a equipe'}<small>${b.read_only ? 'Seu acesso é de leitura' : 'Cada próximo passo faz diferença'}</small></span></div></section><div class="v-board-toolbar"><label class="v-search">${V.icon('search')}<input type="search" id="v-filter-search" placeholder="Buscar visitante, telefone ou etiqueta…" value="${V.e(V.filters.q)}" aria-label="Buscar visitante"></label><div class="v-filters"><select id="v-filter-assigned" aria-label="Filtrar por responsável"><option value="">Todos os responsáveis</option><option value="none" ${V.filters.assigned === 'none' ? 'selected' : ''}>Sem responsável</option>${V.data.staff.map(u => `<option value="${u.id}" ${+V.filters.assigned === +u.id ? 'selected' : ''}>${V.e(u.name)}</option>`).join('')}</select><select id="v-filter-due" aria-label="Filtrar por prazo"><option value="">Todos os prazos</option>${[['overdue', 'Em atraso'], ['soon', 'Próximos 7 dias'], ['completed', 'Concluídos']].map(([v, l]) => `<option value="${v}" ${v === V.filters.due ? 'selected' : ''}>${l}</option>`).join('')}</select>${V.button('archived', '<span class="v-sr">Alternar arquivados</span>', 'archive', `v-icon-btn ${V.filters.archived ? 'active' : ''}`)}${V.button('reload', '<span class="v-sr">Atualizar quadro</span>', 'grid', 'v-icon-btn')}</div></div><div class="v-kanban-wrap"><div id="v-kanban" class="v-kanban"></div></div><footer class="v-board-footer"><span id="v-results"></span><span>${V.icon('heart')} Cuidar é caminhar junto.</span></footer>`;
     V.drawCards();

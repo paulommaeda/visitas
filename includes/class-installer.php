@@ -18,6 +18,7 @@ final class Installer {
                 initial_list_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 schema_json longtext NOT NULL,
                 templates_json longtext NOT NULL,
+                workflow_json longtext DEFAULT NULL,
                 created_by bigint(20) unsigned NOT NULL,
                 created_at datetime NOT NULL,
                 updated_at datetime NOT NULL,
@@ -43,6 +44,8 @@ final class Installer {
                 visit_date date DEFAULT NULL,
                 start_at datetime DEFAULT NULL,
                 due_at datetime DEFAULT NULL,
+                step_due_at datetime DEFAULT NULL,
+                workflow_json longtext DEFAULT NULL,
                 completed tinyint(1) NOT NULL DEFAULT 0,
                 archived tinyint(1) NOT NULL DEFAULT 0,
                 assigned_to bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -63,7 +66,8 @@ final class Installer {
                 KEY board_list (board_id,list_id),
                 KEY assigned_to (assigned_to),
                 KEY due_reminder (archived,completed,due_at),
-                KEY dashboard_visit (archived,visit_date,board_id)
+                KEY dashboard_visit (archived,visit_date,board_id),
+                KEY step_reminder (archived,completed,step_due_at)
             ) $cc;",
             "CREATE TABLE {$p}members (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,

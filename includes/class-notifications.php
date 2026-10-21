@@ -31,8 +31,10 @@ final class Notifications {
         if ($event === 'welcome' && !$s['welcome_enabled']) { return; }
         if ($event === 'assignment' && !$s['assignment_enabled']) { return; }
         if ($event === 'due' && !$s['due_enabled']) { return; }
-        $subject=self::render($s[$event.'_subject'],$card); $body=self::render($s[$event.'_body'],$card);
-        $key=$event.':'.$card['id'].':'.($event==='due' ? md5($card['due_at'].':'.$card['assigned_to']) : $card['version']);
+        $render_card = $card;
+        if ($event === 'due') { $render_card['due_at'] = Workflow::deadline($card); }
+        $subject=self::render($s[$event.'_subject'],$render_card); $body=self::render($s[$event.'_body'],$render_card);
+        $key=$event.':'.$card['id'].':'.($event==='due' ? Workflow::due_hash($card) : $card['version']);
         if ($event==='welcome') {
             foreach (['email','sms'] as $channel) {
                 $recipient=$channel==='email' ? $card['email'] : $card['phone'];
@@ -119,7 +121,8 @@ final class Notifications {
         global $wpdb;
         $s=Settings::get(); if (!$s['due_enabled']) { return; }
         $until=gmdate('Y-m-d H:i:s',time()+$s['reminder_hours']*HOUR_IN_SECONDS);
-        $cards=$wpdb->get_results($wpdb->prepare('SELECT * FROM '.Store::table('cards').' WHERE archived=0 AND completed=0 AND assigned_to>0 AND due_at IS NOT NULL AND due_at<=%s AND due_at>=%s ORDER BY due_at LIMIT 500',$until,gmdate('Y-m-d H:i:s',time()-7*DAY_IN_SECONDS)),ARRAY_A);
+        $deadline=Workflow::deadline_sql();
+        $cards=$wpdb->get_results($wpdb->prepare('SELECT * FROM '.Store::table('cards').' WHERE archived=0 AND completed=0 AND assigned_to>0 AND '.$deadline.' IS NOT NULL AND '.$deadline.'<=%s AND '.$deadline.'>=%s ORDER BY '.$deadline.' LIMIT 500',$until,gmdate('Y-m-d H:i:s',time()-7*DAY_IN_SECONDS)),ARRAY_A);
         foreach ($cards as $card) { self::event('due',$card); }
     }
 
@@ -129,7 +132,7 @@ final class Notifications {
         if (!$n['card_id']) { return true; }
         $c=Store::row('cards',(int)$n['card_id']);
         if (!$c || $c['archived']) { return false; }
-        if (str_starts_with($n['event_key'],'due:') && ($c['completed'] || md5($c['due_at'].':'.$c['assigned_to'])!==explode(':',$n['event_key'])[2])) { return false; }
+        if (str_starts_with($n['event_key'],'due:') && ($c['completed'] || Workflow::due_hash($c)!==explode(':',$n['event_key'])[2])) { return false; }
         if ($n['user_id']) {
             $uid=(int)$n['user_id']; $u=get_userdata($uid);
             if (!$u || (int)$c['assigned_to']!==$uid || !Store::can_assign((int)$c['board_id'],$uid)) { return false; }
