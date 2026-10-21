@@ -11,6 +11,7 @@ final class Access {
             'view_all_cards' => 'Ver todos os cartões dos quadros permitidos', 'delete_cards' => 'Excluir cartões',
             'comment' => 'Registrar interações e comentários', 'notify' => 'Enviar comunicações aos visitantes',
             'manage_users' => 'Gerenciar a equipe e seus perfis', 'view_logs' => 'Consultar notificações',
+            'view_dashboard' => 'Consultar dashboard de acompanhamento',
         ];
     }
 
@@ -31,6 +32,11 @@ final class Access {
                 $caps = ['read'=>true];
                 foreach ($data['caps'] as $cap) { $caps['visitas_' . $cap] = true; }
                 add_role($key, $data['name'], $caps);
+            }
+            elseif (version_compare((string)get_option('visitas_version', '0'), '1.1.0', '<')
+                && in_array($key, ['visitas_pastor','visitas_coordenacao'], true)
+                && !array_key_exists('visitas_view_dashboard', get_role($key)->capabilities)) {
+                get_role($key)->add_cap('visitas_view_dashboard');
             }
         }
         $admin = get_role('administrator');

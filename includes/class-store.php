@@ -257,8 +257,8 @@ final class Store {
         return Access::admin($u) || Access::can('view_all_boards',$user_id) || $b['visibility'] === 'team' || (int)$b['created_by'] === $user_id || (bool)$m;
     }
 
-    public static function activity(int $id, string $kind, string $content): void {
-        self::insert('activity',['card_id'=>$id,'user_id'=>get_current_user_id(),'kind'=>$kind,'content'=>$content,'created_at'=>current_time('mysql',true)]);
+    public static function activity(int $id, string $kind, string $content, ?string $occurred_on = null): void {
+        self::insert('activity',['card_id'=>$id,'user_id'=>get_current_user_id(),'kind'=>$kind,'content'=>$content,'occurred_on'=>$occurred_on,'created_at'=>current_time('mysql',true)]);
     }
 
     public static function staff(): array {

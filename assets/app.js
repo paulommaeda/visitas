@@ -1,4 +1,4 @@
-/* Visitas 1.0.1 — local assets, no build step or external scripts. */
+/* Visitas — local assets, no build step or external scripts. */
 (() => {
   'use strict';
   const V = window.V = { actions: {}, data: null, board: null, cards: [], screen: 'board', filters: { q: '', assigned: '', due: '', archived: false }, modalDirty: false, pendingMoves: new Map(), dragId: 0 };
@@ -30,6 +30,7 @@
       exit: '<path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4m7-16 5 5-5 5m5-5H9"/>',
       archive: '<rect x="3" y="3" width="18" height="4" rx="1"/><path d="M5 7v14h14V7M9 12h6"/>',
       edit: '<path d="m16 3 5 5-12 12-6 1 1-6Zm-2 2 5 5"/>',
+      chart: '<path d="M3 3v18h18M7 16v-4m5 4V7m5 9v-7"/>',
     };
     return `<svg class="v-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.grid}</svg>`;
   };
@@ -83,7 +84,7 @@
     restoreFocus = document.activeElement; V.modalDirty = false;
     V.$('#visitas-modal').innerHTML = `<div class="v-overlay"><section class="v-modal ${wide ? 'v-modal-wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="v-modal-title"><header class="v-modal-header"><h2 id="v-modal-title">${V.e(title)}</h2>${V.button('close', '<span class="v-sr">Fechar</span>', 'close', 'v-icon-btn')}</header>${content}</section></div>`;
     document.body.classList.add('v-modal-open');
-    V.$('#visitas-modal').addEventListener('input', () => V.modalDirty = true, { once: true });
+    V.$('#visitas-modal').addEventListener('input', event => { if (!event.target.closest('[data-no-dirty]')) V.modalDirty = true; }, { once: true });
     const dialog = V.$('.v-modal');
     requestAnimationFrame(() => { if (dialog?.isConnected) V.$('input:not([type="hidden"]),select,textarea,button', dialog)?.focus(); });
   };
@@ -113,7 +114,7 @@
 
   V.shell = () => {
     const d = V.data, b = d.brand;
-    V.$('#visitas-app').innerHTML = `<div class="v-layout"><button class="v-sidebar-shade" data-action="menu" aria-label="Fechar menu"></button><aside class="v-sidebar"><a class="v-brand" href="${V.e(config.portal)}">${b.logo_url ? `<img src="${V.e(b.logo_url)}" alt="${V.e(b.brand_name)}">` : `<span class="v-brand-symbol">${V.icon('heart')}</span>`}<span><strong>${V.e(b.app_name)}</strong><small>${V.e(b.brand_name)}</small></span></a><div class="v-workspace"><span class="v-workspace-dot"></span> Espaço da equipe <span class="v-live">ATIVO</span></div><div class="v-sidebar-section"><p>SEUS QUADROS</p>${V.cap('create_boards') ? V.button('new-board', '<span class="v-sr">Novo quadro</span>', 'plus', 'v-icon-btn') : ''}</div><nav id="v-board-nav" aria-label="Quadros">${d.boards.map(x => `<button class="v-nav-item ${V.board && +V.board.id === x.id && V.screen === 'board' ? 'active' : ''}" data-action="board" data-id="${x.id}"><span class="v-nav-dot" style="background:${V.e(x.color)}"></span><span>${V.e(x.name)}</span>${x.visibility === 'private' ? V.icon('lock') : ''}</button>`).join('') || '<p class="v-sidebar-empty">Nenhum quadro disponível.</p>'}</nav><div class="v-sidebar-bottom"><p>GERENCIAMENTO</p>${V.cap('manage_users') ? V.button('users', 'Equipe', 'people', 'v-nav-item') : ''}${V.cap('view_logs') ? V.button('logs', 'Comunicações', 'mail', 'v-nav-item') : ''}${d.is_admin ? V.button('settings', 'Personalização e ajustes', 'settings', 'v-nav-item') : ''}<div class="v-sidebar-message">${V.icon('heart')}<p>${V.e(b.tagline)}</p></div><button class="v-user" data-action="profile">${V.avatar(d.user.name)}<span><strong>${V.e(d.user.name)}</strong><small>Meu perfil e acesso</small></span>${V.icon('more')}</button></div></aside><div class="v-main"><header class="v-topbar"><div>${V.button('menu', '<span class="v-sr">Abrir menu</span>', 'menu', 'v-icon-btn v-menu-toggle')}<span class="v-breadcrumb">${V.icon('grid')} <span>Meu espaço</span><i>/</i><strong id="v-crumb">Quadros</strong></span></div><div class="v-top-actions"><span class="v-today">${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>${V.button('notifications', '<span class="v-sr">Notificações</span><span class="v-notice-dot" id="v-unread" hidden></span>', 'bell', 'v-icon-btn')}${V.button('logout', '<span class="v-sr">Sair</span>', 'exit', 'v-icon-btn')}</div></header><main id="v-content"></main></div></div>`;
+    V.$('#visitas-app').innerHTML = `<div class="v-layout"><button class="v-sidebar-shade" data-action="menu" aria-label="Fechar menu"></button><aside class="v-sidebar"><a class="v-brand" href="${V.e(config.portal)}">${b.logo_url ? `<img src="${V.e(b.logo_url)}" alt="${V.e(b.brand_name)}">` : `<span class="v-brand-symbol">${V.icon('heart')}</span>`}<span><strong>${V.e(b.app_name)}</strong><small>${V.e(b.brand_name)}</small></span></a><div class="v-workspace"><span class="v-workspace-dot"></span> Espaço da equipe <span class="v-live">ATIVO</span></div><div class="v-sidebar-section"><p>SEUS QUADROS</p>${V.cap('create_boards') ? V.button('new-board', '<span class="v-sr">Novo quadro</span>', 'plus', 'v-icon-btn') : ''}</div><nav id="v-board-nav" aria-label="Quadros">${d.boards.map(x => `<button class="v-nav-item ${V.board && +V.board.id === x.id && V.screen === 'board' ? 'active' : ''}" data-action="board" data-id="${x.id}"><span class="v-nav-dot" style="background:${V.e(x.color)}"></span><span>${V.e(x.name)}</span>${x.visibility === 'private' ? V.icon('lock') : ''}</button>`).join('') || '<p class="v-sidebar-empty">Nenhum quadro disponível.</p>'}</nav><div class="v-sidebar-bottom"><p>GERENCIAMENTO</p>${V.cap('view_dashboard') ? V.button('dashboard', 'Dashboard', 'chart', 'v-nav-item' + (V.screen === 'dashboard' ? ' active' : '')) : ''}${V.cap('manage_users') ? V.button('users', 'Equipe', 'people', 'v-nav-item') : ''}${V.cap('view_logs') ? V.button('logs', 'Comunicações', 'mail', 'v-nav-item') : ''}${d.is_admin ? V.button('settings', 'Personalização e ajustes', 'settings', 'v-nav-item') : ''}<div class="v-sidebar-message">${V.icon('heart')}<p>${V.e(b.tagline)}</p></div><button class="v-user" data-action="profile">${V.avatar(d.user.name)}<span><strong>${V.e(d.user.name)}</strong><small>Meu perfil e acesso</small></span>${V.icon('more')}</button></div></aside><div class="v-main"><header class="v-topbar"><div>${V.button('menu', '<span class="v-sr">Abrir menu</span>', 'menu', 'v-icon-btn v-menu-toggle')}<span class="v-breadcrumb">${V.icon('grid')} <span>Meu espaço</span><i>/</i><strong id="v-crumb">Quadros</strong></span></div><div class="v-top-actions"><span class="v-today">${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>${V.button('notifications', '<span class="v-sr">Notificações</span><span class="v-notice-dot" id="v-unread" hidden></span>', 'bell', 'v-icon-btn')}${V.button('logout', '<span class="v-sr">Sair</span>', 'exit', 'v-icon-btn')}</div></header><main id="v-content"></main></div></div>`;
   };
   V.refresh = async () => { V.data = await V.api('bootstrap'); };
   V.openBoard = async id => {
@@ -122,9 +123,9 @@
     let page = 1, more = true;
     while (more) { const r = await V.api(`boards/${id}/cards?page=${page}&archived=${V.filters.archived ? '1' : '0'}`); V.cards.push(...r.cards); more = r.has_more; page++; }
     V.shell(); V.renderBoard();
-    const url = new URL(location); url.searchParams.set('board', id); url.searchParams.delete('card'); history.replaceState(null, '', url);
+    const url = new URL(location); url.searchParams.set('board', id); ['card','view','month','dashboard_board','include_archived'].forEach(key => url.searchParams.delete(key)); history.replaceState(null, '', url);
   };
-  V.reloadBoard = async () => { await V.refresh(); if (V.board) await V.openBoard(V.board.id); else V.shell(); };
+  V.reloadBoard = async () => { await V.refresh(); if (V.screen === 'dashboard') await V.openDashboard(V.dashboardFilters); else if (V.board) await V.openBoard(V.board.id); else V.shell(); };
   V.filtered = () => V.cards.filter(c => {
     const f = V.filters; const q = f.q.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const hay = [c.title, c.email, c.phone, c.source, ...c.labels].join(' ').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -293,7 +294,8 @@
   V.init = async () => {
     try {
       await V.refresh(); const params = new URLSearchParams(location.search); const selected = V.data.boards.find(b => b.id === +params.get('board')) || V.data.boards[0];
-      if (selected) await V.openBoard(selected.id);
+      if (params.get('view') === 'dashboard' && V.cap('view_dashboard')) await V.openDashboard({ month: params.get('month') || V.data.month, board_id: params.get('dashboard_board') || '0', include_archived: params.get('include_archived') === '1' });
+      else if (selected) await V.openBoard(selected.id);
       else { V.shell(); V.$('#v-content').innerHTML = `<div class="v-empty-page">${V.icon('grid')}<h1>Um novo espaço para acolher</h1><p>Crie um quadro ou peça acesso à coordenação.</p>${V.cap('create_boards') ? V.button('new-board', 'Criar primeiro quadro', 'plus', 'v-primary') : ''}</div>`; }
       if (params.get('card')) await V.actions.card({ dataset: { id: params.get('card') } });
       const poll = async () => { if (document.hidden) return; try { const n = await V.api('notifications'); const dot = V.$('#v-unread'); if (dot) dot.hidden = !n.unread; } catch { /* Session errors are shown on the next requested action. */ } };

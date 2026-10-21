@@ -4,7 +4,7 @@ Tags: church, visitors, kanban, crm
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.0.2
+Stable tag: 1.1.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -16,6 +16,9 @@ O plugin cria uma página Acolher. Shortcode: [visitas_portal]. Consulte o READM
 A partir da versão 1.0.2, novas versões aparecem em Plugins e Painel > Atualizações. Use Verificar atualizações na linha do plugin para consultar o GitHub imediatamente.
 
 == Changelog ==
+= 1.1.0 =
+Dashboard de gestão com filtros por mês e quadro, pessoas acompanhadas, distribuição por etapa, evolução mensal e visitantes em modal. Registros de visitas com data, autor e observações, histórico paginado e acesso configurável por perfil.
+
 = 1.0.2 =
 Atualizações nativas pelo painel WordPress a partir do GitHub, verificação manual por administradores, detalhes da versão e conferência SHA-256 do pacote antes da instalação. Quadros e configurações são preservados.
 

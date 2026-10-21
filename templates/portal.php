@@ -50,5 +50,6 @@ $screen=in_array($_GET['screen']??'', ['lost','reset'],true)?$_GET['screen']:'lo
 <script defer src="<?php echo esc_url(VISITAS_URL.'assets/app.js?v='.VISITAS_VERSION); ?>"></script>
 <script defer src="<?php echo esc_url(VISITAS_URL.'assets/forms.js?v='.VISITAS_VERSION); ?>"></script>
 <script defer src="<?php echo esc_url(VISITAS_URL.'assets/admin.js?v='.VISITAS_VERSION); ?>"></script>
+<script defer src="<?php echo esc_url(VISITAS_URL.'assets/dashboard.js?v='.VISITAS_VERSION); ?>"></script>
 <?php endif; ?>
 </body></html>

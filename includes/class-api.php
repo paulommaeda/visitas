@@ -5,6 +5,8 @@ defined('ABSPATH') || exit;
 final class Api {
     public static function register(): void {
         self::route('/bootstrap','GET',[self::class,'bootstrap']);
+        self::route('/dashboard','GET',[Dashboard::class,'summary']);
+        self::route('/dashboard/visitors','GET',[Dashboard::class,'visitors']);
         self::route('/boards','POST',static function($r) { Access::require_cap('create_boards'); return Store::board_data(Access::board(Store::create_board(self::body($r)))); });
         self::route('/boards/(?P<id>\d+)','GET',[self::class,'board']);
         self::route('/boards/(?P<id>\d+)','PATCH',[self::class,'save_board']);
@@ -18,6 +20,8 @@ final class Api {
         self::route('/cards/(?P<id>\d+)','PATCH',static fn($r)=>Store::save_card(self::body($r),Access::card((int)$r['id'],'edit_cards')));
         self::route('/cards/(?P<id>\d+)','DELETE',[self::class,'delete_card']);
         self::route('/cards/(?P<id>\d+)/comments','POST',[self::class,'comment']);
+        self::route('/cards/(?P<id>\d+)/followups','GET',[Dashboard::class,'followups']);
+        self::route('/cards/(?P<id>\d+)/visits','POST',[Dashboard::class,'visit']);
         self::route('/cards/(?P<id>\d+)/notify','POST',[self::class,'notify']);
         self::route('/profile','PATCH',[self::class,'profile']);
         self::route('/users','GET',[self::class,'users']);
@@ -74,7 +78,7 @@ final class Api {
             'boards'=>$boards,'staff'=>Store::staff(),'capabilities'=>$caps,'is_admin'=>Access::admin(),'brand'=>Settings::public_brand(),
             'user'=>['id'=>$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'login'=>$u->user_login,'roles'=>$u->roles,
                 'phone'=>(string)get_user_meta($u->ID,'visitas_phone',true),'sms_optin'=>get_user_meta($u->ID,'visitas_sms_optin',true)==='1','email_optout'=>get_user_meta($u->ID,'visitas_email_optout',true)==='1'],
-            'portal_url'=>Portal::url(),'version'=>VISITAS_VERSION,
+            'portal_url'=>Portal::url(),'version'=>VISITAS_VERSION,'today'=>wp_date('Y-m-d'),'month'=>wp_date('Y-m'),
         ];
     }
 

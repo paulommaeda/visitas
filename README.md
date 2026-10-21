@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban e identidade visual configurável. Versão atual: **1.0.2**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.1.0**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.0.2.zip` e ative. Para atualizar versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.1.0.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -24,6 +24,24 @@ Para consultar imediatamente, clique em **Verificar atualizações** na linha do
 O resultado da consulta fica em cache por até seis horas, respeitando a frequência de verificação do próprio WordPress. A verificação manual ignora esse cache. Falhas de consulta são temporárias e não alteram o plugin instalado. O ZIP tem pasta `visitas/` e seu SHA-256 é conferido antes de substituir os arquivos. Uma atualização não remove quadros, cartões, usuários ou configurações. Faça backup antes de atualizar.
 
 O canal recebe somente as versões do manifesto `dist/update.json` e os pacotes `dist/visitas-VERSAO.zip`; alterações de código no GitHub sem novo pacote publicado não são oferecidas como atualização. Não há envio de dados de visitantes, SMS ou credenciais ao GitHub.
+
+## Dashboard de acompanhamento
+
+Abra **Dashboard** no menu do portal. Administradores, Pastor e Coordenação recebem acesso por padrão. Em **Equipe → Permissões dos perfis**, a permissão **Consultar dashboard de acompanhamento** pode ser concedida ou removida. Ela respeita o acesso aos quadros privados e aos cartões de cada perfil; não concede acesso ao wp-admin.
+
+Filtre por mês e quadro ou marque **Todos os meses**. Cartões arquivados ficam de fora, a menos que você marque **Incluir arquivados**. Cada cartão representa uma pessoa; cadastros duplicados em cartões diferentes são contados separadamente.
+
+| Indicador | Critério |
+| --- | --- |
+| Visitantes no período | Data da primeira visita; quando não preenchida, data do cadastro no fuso horário do WordPress |
+| Pessoas acompanhadas | Pessoas com ao menos uma interação ou visita realizada no mês, inclusive quem chegou antes; várias visitas ao mesmo cartão contam uma pessoa |
+| Visitas registradas | Número de registros do tipo visita realizada; o indicador também informa o número de pessoas distintas visitadas |
+| Prazos em atraso | Visitantes do período com prazo vencido e acompanhamento ainda não concluído, considerando a data atual |
+| Pessoas por etapa | Lista atual dos visitantes do período; não é uma fotografia histórica da posição do cartão naquele mês |
+
+Clique em um indicador ou etapa para ver a lista de pessoas, com busca por nome, telefone e e-mail e paginação. Abra o visitante para consultar contatos, responsável, etapa, observações do cadastro e todo o histórico de visitas e interações. O gráfico mensal compara visitantes e pessoas acompanhadas em seis meses, e os últimos registros permitem abrir diretamente o visitante.
+
+No modal, **Registrar visita** salva a data da visita realizada e suas observações, com autor e horário do registro. Visitas retroativas entram no mês da data informada. O histórico inclui também as interações das versões anteriores. Para registrar, é necessária a permissão de comentários e acesso de escrita ao quadro; observadores consultam os registros sem alterá-los. O mesmo registro de visita fica disponível na aba **Interações e histórico** do cartão completo. Nenhuma mensagem é enviada ao registrar uma visita.
 
 ## Quadros, listas e cartões
 
@@ -127,7 +145,7 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py dist/visitas-1.0.2.zip
+python3 bin/build.py dist/visitas-1.1.0.zip
 ```
 
 O script extrai a versão e os requisitos dos cabeçalhos e gera também `dist/update.json`, com URL do ZIP, histórico e SHA-256. Publique o código, o ZIP e o manifesto juntos em `main`. Mantenha os ZIPs anteriores disponíveis para instalações que ainda tenham uma oferta em cache. Não altere um ZIP já publicado; aumente a versão para cada lançamento.
@@ -136,9 +154,12 @@ Testes devem rodar em um WordPress descartável. Nunca use dados reais ou uma in
 
 ```bash
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/integration.php
+VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/dashboard.php
 ```
 
 O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPress descartável com o plugin ativado. Configure `TEST_BASE_URL`, `TEST_ADMIN_USER` e `TEST_ADMIN_PASSWORD`. Opcionalmente, informe `VISITAS_PHP`, `VISITAS_PHP_INI` e `VISITAS_WP_ROOT` para o teste iniciar o servidor PHP. `CHROMIUM_PATH` e `PLAYWRIGHT_PATH` permitem usar runtimes já instalados.
+
+`tests/dashboard-browser.cjs` usa o mesmo ambiente para validar filtros, indicadores, listas por etapa, busca, modal de visitantes e registro de visitas em desktop e celular. O teste cria dados fictícios de seis meses. `tests/dashboard.php` valida os números, a paginação, as permissões, a migração dos perfis e os limites de mês no fuso horário do WordPress.
 
 Ao iniciar o servidor PHP, o teste carrega `tests/mock-services.php` para bloquear envios reais e simular as respostas do SMS Gateway. Se usar um servidor externo ao teste, carregue esse arquivo como mu-plugin nesse WordPress descartável e configure `VISITAS_TESTING=1` no processo PHP.
 
@@ -153,3 +174,5 @@ Validação da versão 1.0.0: PHP 8.3.6, WordPress 7.1.3 com o driver oficial SQ
 Validação da versão 1.0.1: 88 verificações de integração aprovadas. O navegador confirmou o arraste antes da conclusão da requisição, uma única gravação sem recarregar o quadro, preservação da rolagem e restauração em falhas. O formulário de SMS foi validado em desktop e celular, incluindo autenticação recusada, aceitação do teste e consulta de entrega, com os serviços externos simulados.
 
 Validação da versão 1.0.2: 88 verificações de regressão e 36 do atualizador aprovadas em WordPress 7.1.3/PHP 8.3.6. Foram testados cache, indisponibilidade, manifesto inválido, permissões, nonce, integridade do pacote e atualização nativa preservando os dados. O navegador validou a tela em desktop e celular, consulta manual, detalhes da versão e Atualizar agora até a reabertura do portal, com GitHub e demais serviços simulados.
+
+Validação da versão 1.1.0: 88 verificações de integração e 66 do dashboard aprovadas em WordPress 7.1.3/PHP 8.3.6. Os testes de interface cobriram filtros mensais, contagem de pessoas sem duplicar visitas, modal, histórico, cartão completo e salvamento de visitas no celular. A atualização nativa desde o ZIP publicado 1.0.2 foi validada em instalação isolada, preservando cartões, checklists, quadros, interações, configurações, ativação e permissões já personalizadas. Todos os serviços externos foram interceptados nos testes.

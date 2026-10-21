@@ -62,7 +62,8 @@ final class Installer {
                 PRIMARY KEY  (id),
                 KEY board_list (board_id,list_id),
                 KEY assigned_to (assigned_to),
-                KEY due_reminder (archived,completed,due_at)
+                KEY due_reminder (archived,completed,due_at),
+                KEY dashboard_visit (archived,visit_date,board_id)
             ) $cc;",
             "CREATE TABLE {$p}members (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -78,9 +79,11 @@ final class Installer {
                 user_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 kind varchar(30) NOT NULL,
                 content text NOT NULL,
+                occurred_on date DEFAULT NULL,
                 created_at datetime NOT NULL,
                 PRIMARY KEY  (id),
-                KEY card_activity (card_id,id)
+                KEY card_activity (card_id,id),
+                KEY followup_date (kind,occurred_on,card_id)
             ) $cc;",
             "CREATE TABLE {$p}notifications (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
