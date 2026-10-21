@@ -26,3 +26,6 @@
 
 /* Checklist task ownership */
 .v-task-assignee{font-size:11px;margin:12px 0 0}.v-task-assignee select{font-size:12px;min-height:40px;width:100%;min-width:0;text-overflow:ellipsis}@media(max-width:650px){.v-task-assignee{font-size:10px}.v-task-assignee select{font-size:11px}}
+
+/* Read-only checklist details remain legible while assigned tasks can be completed. */
+.v-checklist-readonly input[readonly],.v-checklist-readonly textarea[readonly]{background:var(--v-surface);color:var(--v-text);cursor:text}.v-checklist-readonly select:disabled{color:var(--v-text);opacity:.85}.v-checklist-readonly [data-item-done]:disabled{cursor:default}.v-checklist-readonly [data-item-done]:not(:disabled){cursor:pointer}

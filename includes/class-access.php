@@ -8,6 +8,7 @@ final class Access {
             'access' => 'Entrar no portal', 'view_all_boards' => 'Acessar todos os quadros privados',
             'create_boards' => 'Criar quadros', 'manage_boards' => 'Gerenciar listas, modelos e membros',
             'create_cards' => 'Cadastrar visitantes e cartões', 'edit_cards' => 'Editar e mover cartões',
+            'complete_assigned_tasks' => 'Concluir somente tarefas atribuídas a si',
             'view_all_cards' => 'Ver todos os cartões dos quadros permitidos', 'delete_cards' => 'Excluir cartões',
             'comment' => 'Registrar interações e comentários', 'notify' => 'Enviar comunicações aos visitantes',
             'manage_users' => 'Gerenciar a equipe e seus perfis', 'view_logs' => 'Consultar notificações',
@@ -19,7 +20,7 @@ final class Access {
         $all = array_keys(self::capabilities());
         return [
             'visitas_pastor' => ['name'=>'Pastor — Visitas','caps'=>$all],
-            'visitas_coordenacao' => ['name'=>'Coordenação — Visitas','caps'=>array_diff($all, ['view_all_boards'])],
+            'visitas_coordenacao' => ['name'=>'Coordenação — Visitas','caps'=>['access','view_all_cards','view_dashboard','complete_assigned_tasks']],
             'visitas_recepcao' => ['name'=>'Recepção — Visitas','caps'=>['access','create_cards','edit_cards','view_all_cards','comment']],
             'visitas_acompanhamento' => ['name'=>'Acompanhamento — Visitas','caps'=>['access','edit_cards','comment','notify']],
             'visitas_observador' => ['name'=>'Observador — Visitas','caps'=>['access','view_all_cards']],
@@ -39,6 +40,13 @@ final class Access {
                 get_role($key)->add_cap('visitas_view_dashboard');
             }
         }
+        if (version_compare((string)get_option('visitas_version', '0'), '1.2.3', '<')) {
+            $coord = get_role('visitas_coordenacao');
+            if ($coord) {
+                foreach (self::capabilities() as $cap=>$label) { if (!in_array($cap, self::coordination_caps(), true)) { $coord->remove_cap('visitas_'.$cap); } }
+                if (!array_key_exists('visitas_complete_assigned_tasks', $coord->capabilities)) { $coord->add_cap('visitas_complete_assigned_tasks'); }
+            }
+        }
         $admin = get_role('administrator');
         if ($admin) { foreach (self::capabilities() as $key => $name) { $admin->add_cap('visitas_' . $key); } }
     }
@@ -50,8 +58,16 @@ final class Access {
 
     public static function can(string $cap, ?int $user_id = null): bool {
         $user = $user_id ? get_userdata($user_id) : wp_get_current_user();
+        if ($user && self::coordination($user) && !in_array($cap, self::coordination_caps(), true)) { return false; }
         return $user && (self::admin($user) || user_can($user, 'visitas_' . $cap));
     }
+
+    public static function coordination(?\WP_User $user = null): bool {
+        $user = $user ?: wp_get_current_user();
+        return !self::admin($user) && in_array('visitas_coordenacao', $user->roles, true);
+    }
+
+    public static function coordination_caps(): array { return ['access','view_all_boards','view_all_cards','view_dashboard','complete_assigned_tasks']; }
 
     public static function require_cap(string $cap): void {
         if (!self::can($cap)) { throw new HttpError('Seu perfil não permite esta ação.', 403); }
@@ -79,7 +95,7 @@ final class Access {
             if (!str_starts_with($key, 'visitas_')) { continue; }
             $caps = [];
             foreach (self::capabilities() as $cap => $label) { $caps[$cap] = !empty($role['capabilities']['visitas_' . $cap]); }
-            $roles[] = ['key'=>$key, 'name'=>$role['name'], 'caps'=>$caps];
+            $roles[] = ['key'=>$key, 'name'=>$role['name'], 'caps'=>$caps, 'allowed_caps'=>$key === 'visitas_coordenacao' ? self::coordination_caps() : array_keys(self::capabilities())];
         }
         return $roles;
     }
@@ -90,6 +106,7 @@ final class Access {
         $member = Store::member($id, get_current_user_id());
         $allowed = self::admin() || self::can('view_all_boards') || (int) $b['created_by'] === get_current_user_id() || $b['visibility'] === 'team' || $member;
         if (!$allowed) { throw new HttpError('Você não tem acesso a este quadro.', 403); }
+        if ($manage && self::coordination()) { throw new HttpError('Coordenação pode consultar o quadro e concluir suas tarefas, sem alterar modelos ou configurações.', 403); }
         if ($manage && !(self::admin() || (self::can('manage_boards') && (!$member || $member['role'] !== 'viewer')) || ($member && $member['role'] === 'manager'))) {
             throw new HttpError('Você não pode gerenciar este quadro.', 403);
         }

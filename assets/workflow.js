@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const V = window.V, e = V.e;
+  const taskMode = () => !V.cap('edit_cards') && V.cap('complete_assigned_tasks') && !V.board?.read_only;
   const currentFlow = () => V.editingCard?.id ? V.editingCard.workflow || {} : V.board?.workflow || {};
   const rule = item => ({ amount: 0, unit: 'business_days', target_list_id: 0, require_note: false, ...item.rule });
   const units = { hours: 'Horas corridas', days: 'Dias corridos', business_days: 'Dias úteis' };
@@ -73,28 +74,50 @@
     const result = close(force); if (result) V.cardBaseline = null; return result;
   };
   const summaryHTML = flow => `<div class="v-workflow-summary"><header><strong>${flow.enabled ? 'Planejamento dos checklists' : 'Planejamento automático desativado'}</strong>${flow.enabled ? '<span class="v-badge">ATIVO</span>' : ''}</header>${flow.enabled ? `<div class="v-workflow-dates"><span>Entrega final prevista<strong>${flow.planned_due_at ? V.date(flow.planned_due_at, true) : 'Calculada ao cadastrar e salvar os prazos'}</strong><small>Soma das etapas a partir do cadastro do cartão.</small></span><span>Etapa atual<strong>${e(flow.active?.text || 'Todos os passos concluídos ou ainda não iniciados')}</strong><small>${flow.active?.due_at ? 'Executar até ' + V.date(flow.active.due_at, true) : 'Sem prazo de execução definido'}</small></span></div><p class="v-muted v-small">Marcar um item salva os checklists e executa sua ação. Os demais dados do cartão continuam no botão Salvar alterações.</p>` : '<p class="v-muted v-small">Os checks e observações são salvos com o cartão. Ative o planejamento no quadro para calcular datas e executar ações ao marcar.</p>'}${V.cap('edit_cards') && !V.board.read_only && V.editingCard.id ? `<div class="v-inline-actions">${V.board.workflow?.enabled ? V.button('workflow-use-board','Aplicar planejamento atual do quadro','clock') : ''}${flow.enabled ? V.button('workflow-manual','Usar prazos manuais neste cartão','','v-link-btn') : ''}</div>` : ''}</div>`;
+  V.applyChecklistPermissions = () => {
+    if (V.cap('edit_cards') && !V.board.read_only) return;
+    const root = V.$('#v-checklists'); if (!root) return;
+    const allow = taskMode() && !!V.editingCard?.id;
+    root.closest('fieldset').disabled = !allow;
+    root.closest('fieldset').classList.add('v-checklist-readonly');
+    for (const input of V.$$('input,select,textarea,button', root.closest('fieldset'))) {
+      input.disabled = true;
+      if (input.matches('textarea, input[data-item-text], input[data-checklist-title], input[data-rule-amount]')) { input.disabled = false; input.readOnly = true; }
+      if (input.matches('button, #v-template-picker')) input.hidden = true;
+    }
+    for (const input of V.$$('[data-item-done]', root)) {
+      const item = input.closest('[data-item]'), list = item.closest('[data-checklist]');
+      const saved = V.editingCard.checklists.find(c => c.id === list.dataset.checklist)?.items.find(i => i.id === item.dataset.item);
+      const own = +saved?.assigned_to === +V.data.user.id;
+      input.disabled = !allow || !own || !!saved?.done;
+      input.setAttribute('aria-label', own ? (saved?.done ? 'Sua tarefa já concluída' : 'Concluir tarefa atribuída a você') : 'Tarefa de outra pessoa · somente leitura');
+    }
+  };
   V.renderWorkflowCard = () => {
     const root = V.$('#v-checklists'); if (!root) return;
     let summary = V.$('#v-workflow-card');
     if (!summary) { summary = document.createElement('div'); summary.id = 'v-workflow-card'; root.before(summary); }
     const flow = currentFlow(); summary.innerHTML = summaryHTML(flow);
+    if (taskMode()) summary.querySelector('p').textContent = 'Você pode concluir somente tarefas atribuídas a você. As demais tarefas, observações, modelos e prazos são de consulta. Tarefas já concluídas só podem ser reabertas por quem tem permissão de edição.';
     const due = V.$('#v-card-form [name="due_at"]');
     if (due) { due.readOnly = !!(flow.enabled && flow.sync_due && (flow.planned_due_at || V.collectChecklists().some(l => l.items.some(i => i.rule.amount > 0)))); due.title = due.readOnly ? 'Calculado pela soma dos prazos dos checklists.' : ''; }
     const completed = V.$('#v-card-form [name="completed"]');
     if (completed) { completed.disabled = !!(flow.enabled && flow.complete_card); completed.closest('label').title = completed.disabled ? 'Controlado automaticamente pela conclusão dos checklists.' : ''; }
   };
-  V.saveChecklist = async (extra = {}) => {
+  V.saveChecklist = async (extra = {}, task = null) => {
     if (V.checklistSaving) return;
     const form = V.$('#v-card-form'), card = V.editingCard;
     if (!form || !card?.id) return;
-    for (const input of V.$$('input,select,textarea', V.$('#v-checklists'))) {
+    for (const input of task ? [] : V.$$('input,select,textarea', V.$('#v-checklists'))) {
       if (!input.checkValidity()) { input.closest('details')?.setAttribute('open',''); input.reportValidity(); throw new Error('Confira os campos dos checklists antes de concluir.'); }
     }
     V.checklistSaving = true;
     const disabled = [...V.$$('input,select,textarea,button', V.$('#v-checklists')), ...V.$$('[type="submit"], [data-action="workflow-use-board"], [data-action="workflow-manual"]', form)].map(input => [input, input.disabled]);
     disabled.forEach(([input]) => input.disabled = true);
     try {
-      const saved = await V.api('cards/' + card.id, 'PATCH', { version: +card.version, checklists: V.collectChecklists(), ...extra });
+      const saved = task
+        ? await V.api('cards/' + card.id + '/tasks/complete', 'POST', { version: +card.version, checklist_id: task.checklist_id, item_id: task.item_id })
+        : await V.api('cards/' + card.id, 'PATCH', { version: +card.version, checklists: V.collectChecklists(), ...extra });
       Object.assign(card, saved);
       if (V.screen === 'board' && +V.board.id === +card.board_id) {
         const index = V.cards.findIndex(c => +c.id === +card.id); if (index >= 0) { V.cards[index] = saved; V.placeCard(card.id, saved.list_id); V.syncCardElement(card.id); }
@@ -115,24 +138,25 @@
       for (const list of V.$$('[data-checklist]')) for (const item of V.$$('[data-item]', list)) if (open.includes(list.dataset.checklist+'/'+item.dataset.item)) V.$('details', item).open = true;
       for (const list of V.$$('[data-checklist]')) if (openLists.includes(list.dataset.checklist)) V.$('.v-checklist-notes', list).open = true;
       const fields = { due_at: V.localDateTime(saved.due_at), list_id: String(saved.list_id) };
-      for (const [name,value] of Object.entries(fields)) { form.elements[name].value = value; V.cardBaseline.fields[name] = value; }
+      for (const [name,value] of Object.entries(fields)) { form.elements[name].value = value; if (!task) V.cardBaseline.fields[name] = value; }
       form.elements.completed.checked = !!+saved.completed;
-      V.renderWorkflowCard();
-      if (+saved.completed && !form.elements.completed.disabled) V.cardBaseline.fields.completed = 'on'; else delete V.cardBaseline.fields.completed;
+      V.renderWorkflowCard(); V.applyChecklistPermissions();
+      if (!task && +saved.completed && !form.elements.completed.disabled) V.cardBaseline.fields.completed = 'on'; else delete V.cardBaseline.fields.completed;
       V.cardBaseline.checklists = JSON.stringify(V.collectChecklists()); V.modalDirty = !!dirty(); body.scrollTop = scroll;
       if (focused && focusedList) V.$(`[data-checklist="${CSS.escape(focusedList)}"] [data-item="${CSS.escape(focused.dataset.item)}"] [data-item-done]`)?.focus({ preventScroll: true });
-      V.toast('Checklist salvo. Prazos e ações atualizados.');
+      V.toast(task ? 'Tarefa concluída.' : 'Checklist salvo. Prazos e ações atualizados.');
     } finally { V.checklistSaving = false; disabled.forEach(([input,state]) => { if (input.isConnected) input.disabled = state; }); }
   };
   V.actions['workflow-use-board'] = () => V.saveChecklist({ use_board_workflow: true });
   V.actions['workflow-manual'] = () => V.saveChecklist({ disable_workflow: true });
   const editCard = V.editCard;
   V.editCard = async card => {
-    await editCard(card); V.renderWorkflowCard(); V.cardBaseline = readState();
+    await editCard(card); V.renderWorkflowCard(); V.applyChecklistPermissions(); V.cardBaseline = readState();
     V.$('#v-checklists').addEventListener('change', async event => {
-      if (!event.target.matches('[data-item-done]') || !V.editingCard.id || !currentFlow().enabled) return;
+      if (!event.target.matches('[data-item-done]') || !V.editingCard.id || (!currentFlow().enabled && !taskMode())) return;
       const input = event.target, previous = !input.checked;
-      try { await V.saveChecklist(); } catch (error) { if (input.isConnected) input.checked = previous; V.modalDirty = !!dirty(); V.toast(error.message, true); }
+      const task = taskMode() ? { checklist_id: input.closest('[data-checklist]').dataset.checklist, item_id: input.closest('[data-item]').dataset.item } : null;
+      try { await V.saveChecklist({}, task); } catch (error) { if (input.isConnected) input.checked = previous; V.modalDirty = !!dirty(); V.toast(error.message, true); }
     });
     V.$('#v-card-form').addEventListener('submit', event => { if (V.checklistSaving) { event.preventDefault(); event.stopImmediatePropagation(); V.toast('Aguarde o checklist terminar de salvar.'); } }, true);
   };

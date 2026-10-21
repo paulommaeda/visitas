@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.2**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.3**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.2.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.3.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -129,10 +129,14 @@ Para excluir uma lista usada como destino de uma ação, remova primeiro essa re
 | --- | --- |
 | Administrador WordPress | Portal completo, configurações, credenciais e editor de permissões; acesso ao wp-admin |
 | Pastor — Visitas | Todos os quadros, inclusive privados; gestão de quadros, cartões, equipe e comunicações |
-| Coordenação — Visitas | Gestão de quadros permitidos, cartões, equipe e comunicações |
+| Coordenação — Visitas | Consulta dos quadros permitidos e dashboard; conclusão somente de tarefas atribuídas à própria pessoa |
 | Recepção — Visitas | Cadastro e edição de visitantes; visualização dos cartões dos quadros permitidos; interações |
 | Acompanhamento — Visitas | Cartões atribuídos a si ou criados por si, com edição, interações e comunicações |
 | Observador — Visitas | Leitura dos cartões dos quadros permitidos |
+
+A **Coordenação** não cria nem edita modelos, prazos, regras, dados dos visitantes, responsáveis ou listas. Pode apenas marcar como concluídas as tarefas atribuídas ao seu próprio usuário; tarefas de outras pessoas ou sem responsável ficam somente leitura, e a Coordenação não reabre checks já concluídos. O check é salvo imediatamente, mesmo sem planejamento automático. A ordem das etapas e a exigência de observações previamente registradas continuam valendo. Movimentações e prazos automáticos são executados pelo sistema conforme as regras existentes. A restrição vale também pela API, mesmo se houver permissões antigas, outro perfil não administrativo ou vínculo de gerente no quadro. Administradores WordPress mantêm acesso completo.
+
+Na atualização para 1.2.3, permissões antigas de gestão da Coordenação são removidas, sem alterar cartões, responsáveis ou regras. No editor de perfis, suas permissões de consulta e de conclusão de tarefas podem ser ajustadas; as de gestão ficam bloqueadas. Para dar funções de gestão a uma pessoa, use um perfil de gestão sem combinar com Coordenação.
 
 Os perfis são funções reais do WordPress. Suas permissões do portal podem ser editadas em **Equipe → Permissões dos perfis**. Apenas administradores alteram essa matriz e as configurações globais. A gestão da equipe permite combinar perfis; gestores não podem conceder permissões superiores às próprias. O portal não cria administradores WordPress.
 
@@ -203,7 +207,7 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py dist/visitas-1.2.2.zip
+python3 bin/build.py dist/visitas-1.2.3.zip
 ```
 
 O script extrai a versão e os requisitos dos cabeçalhos e gera também `dist/update.json`, com URL do ZIP, histórico e SHA-256. Publique o código, o ZIP e o manifesto juntos em `main`. Mantenha os ZIPs anteriores disponíveis para instalações que ainda tenham uma oferta em cache. Não altere um ZIP já publicado; aumente a versão para cada lançamento.
@@ -216,6 +220,7 @@ VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/dashboard.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/workflow.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/task-assignees.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/checklist-visits.php
+VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/coordination.php
 ```
 
 O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPress descartável com o plugin ativado. Configure `TEST_BASE_URL`, `TEST_ADMIN_USER` e `TEST_ADMIN_PASSWORD`. Opcionalmente, informe `VISITAS_PHP`, `VISITAS_PHP_INI` e `VISITAS_WP_ROOT` para o teste iniciar o servidor PHP. `CHROMIUM_PATH` e `PLAYWRIGHT_PATH` permitem usar runtimes já instalados.
@@ -247,3 +252,5 @@ Na mesma validação 1.2.0, passaram as 88 verificações de integração e as 6
 Validação da versão 1.2.1: 49 verificações específicas de responsáveis por tarefa, além das 227 verificações anteriores de integração, dashboard e workflow. A interface foi conferida no computador e celular para seleção, remoção, herança de modelos e preservação dos checks, observações e prazos. A atualização nativa desde o ZIP publicado 1.2.0 foi validada em instalação isolada, preservando dados, identidade e permissões. Todos os envios externos foram bloqueados nos testes.
 
 Validação da versão 1.2.2: 53 verificações específicas de visitas por checklist e 276 verificações anteriores aprovadas. Cobertura de check/desmarcação, salvamento sem duplicação, mês de conclusão e fuso horário, cartões anteriores, visitas manuais, responsáveis e quadros privados. Interface conferida no computador e celular, incluindo o indicador, lista de pessoas, observações e manutenção dos filtros. Atualização nativa desde o ZIP publicado 1.2.1 validada com reconhecimento do check anterior e preservação de cartões, prazos, histórico, identidade e permissões. Todos os envios externos foram bloqueados nos testes.
+
+Validação da versão 1.2.3: 76 verificações específicas de Coordenação e as 329 verificações anteriores aprovadas. Testes cobrem tarefas próprias, bloqueio de tarefas alheias e alterações de prazos/modelos, permissões antigas e combinações de perfis, vínculo de gerente no quadro, tarefas sem automação, ordem obrigatória e observações exigidas. Interface conferida no computador e celular, com recuperação de falha e leitura do dashboard. Atualização nativa desde o ZIP publicado 1.2.2 validada para usuário existente com permissões antigas, preservando cartões, regras, responsáveis, progresso, prazos, histórico, identidade e os outros perfis personalizados. Nenhum envio externo real foi realizado nos testes.

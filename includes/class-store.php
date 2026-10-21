@@ -197,8 +197,30 @@ final class Store {
     }
 
     public static function save_card(array $input, ?array $old = null): array {
+        return self::persist_card($input, $old);
+    }
+
+    public static function complete_task(int $id, array $input): array {
+        $old = Access::card($id, 'complete_assigned_tasks');
+        if (!isset($input['version']) || !is_scalar($input['version']) || (string)$input['version'] !== (string)$old['version']) { throw new HttpError('Este cartão foi alterado. Feche e abra novamente para carregar a versão atual.', 409); }
+        foreach (['checklist_id','item_id'] as $key) {
+            if (!is_string($input[$key] ?? null) || !preg_match('/^[a-z0-9_-]+$/D', $input[$key])) { throw new HttpError('Identifique a tarefa que será concluída.', 422); }
+        }
+        $lists = self::json($old['checklists_json']);
+        foreach ($lists as &$list) { if ($list['id'] === $input['checklist_id']) { foreach ($list['items'] as &$item) {
+            if ($item['id'] !== $input['item_id']) { continue; }
+            if ((int)($item['assigned_to'] ?? 0) !== get_current_user_id()) { throw new HttpError('Você só pode concluir tarefas atribuídas a você.', 403); }
+            if ($item['done']) { return self::card_data($old); }
+            if (!empty($item['rule']['require_note']) && trim($item['notes'] ?? '') === '') { throw new HttpError('Esta tarefa exige uma observação. Solicite à gestão o preenchimento antes de concluir.', 422); }
+            $item['done'] = true; unset($item, $list);
+            return self::persist_card(['version'=>(int)$old['version'], 'checklists'=>$lists], $old, true);
+        } unset($item); } } unset($list);
+        throw new HttpError('Tarefa não encontrada neste cartão.', 404);
+    }
+
+    private static function persist_card(array $input, ?array $old = null, bool $complete_task = false): array {
         global $wpdb;
-        $b = Access::board_write((int) ($old['board_id'] ?? $input['board_id'] ?? 0), $old ? 'edit_cards' : 'create_cards');
+        $b = Access::board_write((int) ($old['board_id'] ?? $input['board_id'] ?? 0), $old ? ($complete_task ? 'complete_assigned_tasks' : 'edit_cards') : 'create_cards');
         $board_id = (int) $b['id'];
         if ($old && (!isset($input['version']) || (int)$input['version'] !== (int)$old['version'])) {
             throw new HttpError('Este cartão foi alterado. Feche e abra novamente para carregar a versão atual.', 409);
@@ -301,7 +323,7 @@ final class Store {
 
     public static function can_assign(int $board_id, int $user_id): bool {
         $u = get_userdata($user_id); $b = self::row('boards',$board_id); $m = self::member($board_id,$user_id);
-        if (!$u || !$b || !Access::can('access',$user_id) || !Access::can('edit_cards',$user_id)) { return false; }
+        if (!$u || !$b || !Access::can('access',$user_id) || (!Access::can('edit_cards',$user_id) && !Access::can('complete_assigned_tasks',$user_id))) { return false; }
         if (!Access::admin($u) && $m && $m['role'] === 'viewer') { return false; }
         return Access::admin($u) || Access::can('view_all_boards',$user_id) || $b['visibility'] === 'team' || (int)$b['created_by'] === $user_id || (bool)$m;
     }

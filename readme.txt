@@ -4,7 +4,7 @@ Tags: church, visitors, kanban, crm
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.2.2
+Stable tag: 1.2.3
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -16,6 +16,9 @@ O plugin cria uma página Acolher. Shortcode: [visitas_portal]. Consulte o READM
 A partir da versão 1.0.2, novas versões aparecem em Plugins e Painel > Atualizações. Use Verificar atualizações na linha do plugin para consultar o GitHub imediatamente.
 
 == Changelog ==
+= 1.2.3 =
+Coordenação passa a consultar os dados e concluir somente tarefas atribuídas à própria pessoa. Modelos, prazos, responsáveis, cadastros e tarefas de outras pessoas ficam somente leitura, com validação no servidor e atualização dos perfis existentes.
+
 = 1.2.2 =
 Dashboard contabiliza os checks concluídos de “Visita realizada”, incluindo cartões anteriores. Filtros seguem a data da conclusão, sem duplicar ao salvar novamente. Desmarcar o check retira a visita da contagem.
 

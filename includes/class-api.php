@@ -18,6 +18,7 @@ final class Api {
         self::route('/cards','POST',static fn($r)=>Store::save_card(self::body($r)));
         self::route('/cards/(?P<id>\d+)','GET',[self::class,'card']);
         self::route('/cards/(?P<id>\d+)','PATCH',[self::class,'save_card']);
+        self::route('/cards/(?P<id>\d+)/tasks/complete','POST',[self::class,'complete_task']);
         self::route('/cards/(?P<id>\d+)','DELETE',[self::class,'delete_card']);
         self::route('/cards/(?P<id>\d+)/comments','POST',[self::class,'comment']);
         self::route('/cards/(?P<id>\d+)/followups','GET',[Dashboard::class,'followups']);
@@ -197,6 +198,16 @@ final class Api {
         return $card;
     }
 
+    public static function complete_task($r): array {
+        global $wpdb;
+        $input = self::body($r);
+        if (array_diff(array_keys($input), ['version','checklist_id','item_id'])) { throw new HttpError('Esta ação permite apenas concluir uma tarefa atribuída a você.', 403); }
+        $card = Store::complete_task((int)$r['id'], $input);
+        $rows = $wpdb->get_results($wpdb->prepare('SELECT * FROM '.Store::table('activity').' WHERE card_id=%d ORDER BY id DESC LIMIT 51', $card['id']), ARRAY_A);
+        $card['activity'] = array_slice($rows, 0, 50); $card['activity_more'] = count($rows) > 50;
+        return $card;
+    }
+
     public static function delete_card($r): array {
         $c=Access::card((int)$r['id'],'delete_cards');
         Store::transaction(static function() use($c) { global $wpdb; foreach (['notifications','activity','task_assignees'] as $t) { $wpdb->delete(Store::table($t),['card_id'=>$c['id']]); } $wpdb->delete(Store::table('cards'),['id'=>$c['id']]); });
@@ -283,6 +294,11 @@ final class Api {
     public static function save_role($r): array {
         self::admin(); $in=self::body($r); $key=sanitize_key($in['key']??'');
         if (!preg_match('/^visitas_[a-z0-9_]{1,52}$/',$key)) { throw new HttpError('O identificador deve começar com visitas_ e conter apenas letras minúsculas, números e sublinhados.',422); }
+        if ($key === 'visitas_coordenacao') {
+            foreach (Access::capabilities() as $cap=>$label) {
+                if (!empty($in['caps'][$cap]) && !in_array($cap, Access::coordination_caps(), true)) { throw new HttpError('Coordenação permite somente consulta e conclusão de tarefas próprias. Use outro perfil para gestão.', 422); }
+            }
+        }
         $name=Store::name($in['name']??''); $role=get_role($key);
         if (!$role) { add_role($key,$name,['read'=>true]); $role=get_role($key); }
         foreach (Access::capabilities() as $cap=>$label) {

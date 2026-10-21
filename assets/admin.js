@@ -71,6 +71,13 @@
   V.roleForm = role => {
     const r = V.rolesData;
     V.modal('Perfis e controle de acesso', `<form id="v-role-form"><div class="v-modal-body">${V.formError}<div class="v-inline-actions"><select id="v-role-picker" aria-label="Selecionar perfil"><option value="">Novo perfil</option>${r.roles.map(x => `<option value="${e(x.key)}" ${x.key === role?.key ? 'selected' : ''}>${e(x.name)}</option>`).join('')}</select>${V.button('new-role', 'Novo perfil', 'plus')}</div><div class="v-form-grid">${input('name', 'Nome do perfil', role?.name || '', 'text', 'required')}${input('key', 'Identificador', role?.key || 'visitas_', 'text', 'required pattern="visitas_[a-z0-9_]+" ' + (role ? 'readonly' : ''))}</div><p class="v-muted v-small">Estas opções afetam apenas o portal. O painel wp-admin permanece exclusivo de administradores WordPress.</p><div class="v-capabilities">${Object.entries(r.capabilities).map(([cap, label]) => check('cap_' + cap, e(label), role?.caps[cap])).join('')}</div></div><footer class="v-modal-footer"><span></span><div>${V.button('users', 'Voltar')}<button type="submit" class="v-btn v-primary">Salvar permissões</button></div></footer></form>`, true);
+    if (role?.allowed_caps) {
+      for (const cap of Object.keys(r.capabilities)) if (!role.allowed_caps.includes(cap)) {
+        const box = V.$(`[name="cap_${cap}"]`); box.checked = false; box.disabled = true;
+        box.closest('label').title = 'Coordenação permite somente consulta e conclusão de tarefas próprias.';
+      }
+      if (role.key === 'visitas_coordenacao') V.$('.v-capabilities').insertAdjacentHTML('beforebegin', '<p class="v-alert">Coordenação consulta os dados e conclui apenas tarefas atribuídas à própria pessoa. Modelos, prazos e cadastros permanecem somente leitura.</p>');
+    }
     V.$('#v-role-picker').addEventListener('change', ev => { if (V.modalDirty && !confirm('Descartar alterações não salvas deste perfil?')) return; V.roleForm(r.roles.find(x => x.key === ev.target.value)); });
     V.form('v-role-form', async (f, fd) => { const caps = {}; Object.keys(r.capabilities).forEach(c => caps[c] = fd.has('cap_' + c)); const out = await V.api('roles', 'POST', { key: fd.get('key'), name: fd.get('name'), caps }); V.rolesData.roles = out.roles; V.modalDirty = false; await V.refresh(); V.roleForm(out.roles.find(x => x.key === fd.get('key'))); V.toast('Permissões atualizadas.'); });
   };
