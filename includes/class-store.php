@@ -288,6 +288,7 @@ final class Store {
             self::sync_task_assignees($id, self::json($data['checklists_json']));
             self::activity($id, $old ? 'updated' : 'created', $old ? 'Cartão atualizado.' : 'Visitante cadastrado.');
             foreach ($flow_events as $event) { self::activity($id, $event['kind'], $event['content']); }
+            if (!$old || array_key_exists('checklists', $input)) { self::sync_checklist_visits($id, self::json($data['checklists_json'])); }
             if ($old && (int)$old['list_id'] !== (int)$data['list_id']) { $l=self::row('lists',(int)$data['list_id']); self::activity($id,'moved','Movido para ' . $l['name'] . '.'); }
             if ($old && ((int)$old['consent_email'] !== (int)$data['consent_email'] || (int)$old['consent_sms'] !== (int)$data['consent_sms'])) { self::activity($id,'consent','Preferências de comunicação atualizadas.'); }
             return $id;
@@ -317,6 +318,33 @@ final class Store {
 
     public static function activity(int $id, string $kind, string $content, ?string $occurred_on = null): void {
         self::insert('activity',['card_id'=>$id,'user_id'=>get_current_user_id(),'kind'=>$kind,'content'=>$content,'occurred_on'=>$occurred_on,'created_at'=>current_time('mysql',true)]);
+    }
+
+    /** One derived visit per checked task. The checklist remains the source of truth. */
+    public static function sync_checklist_visits(int $card_id, array $checklists): void {
+        global $wpdb;
+        $existing = [];
+        foreach ($wpdb->get_results($wpdb->prepare('SELECT id,source_key FROM '.self::table('activity')." WHERE card_id=%d AND kind='checklist_visit'", $card_id), ARRAY_A) as $row) { $existing[$row['source_key']] = (int)$row['id']; }
+        $active = [];
+        foreach ($checklists as $list) { foreach ($list['items'] ?? [] as $item) {
+            if (empty($item['done']) || !preg_match('/^visita\s+realizada[.!:]*$/iu', trim($item['text'] ?? ''))) { continue; }
+            $key = 'checklist_visit:'.md5(($list['id'] ?? '').'/'.($item['id'] ?? ''));
+            $active[$key] = true; $date = null;
+            if (!empty($item['completed_at'])) {
+                try { $date = self::datetime($item['completed_at']); } catch (HttpError $e) { /* Old undated checks are counted only in all-month totals. */ }
+            }
+            $data = ['card_id'=>$card_id, 'user_id'=>(int)($item['completed_by'] ?? 0), 'kind'=>'checklist_visit',
+                'content'=>'Visita realizada pelo checklist “'.($list['title'] ?? '').'”.'.(!empty($item['notes']) ? "\n".$item['notes'] : ''),
+                'occurred_on'=>null, 'occurred_at'=>$date, 'source_key'=>$key, 'created_at'=>$date ?: current_time('mysql', true)];
+            if (isset($existing[$key])) {
+                // Keep the original projection timestamp when no historic completion date exists.
+                if (!$date) { unset($data['created_at']); }
+                self::update('activity', $data, ['id'=>$existing[$key]]);
+            } else { self::insert('activity', $data); }
+        } }
+        foreach ($existing as $key=>$id) {
+            if (!isset($active[$key]) && $wpdb->delete(self::table('activity'), ['id'=>$id, 'card_id'=>$card_id]) === false) { throw new HttpError('Não foi possível atualizar as visitas do checklist.', 500); }
+        }
     }
 
     public static function staff(): array {

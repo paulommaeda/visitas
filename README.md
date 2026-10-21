@@ -1,10 +1,10 @@
 # Visitas — Acolher
 
-Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.1**.
+Plugin WordPress para acolhimento e acompanhamento de visitantes de igrejas, com quadros Kanban, dashboard de gestão e identidade visual configurável. Versão atual: **1.2.2**.
 
 ## Instalação e primeiro acesso
 
-1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.1.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
+1. Em **Plugins → Adicionar plugin → Enviar plugin**, envie `visitas-1.2.2.zip` e ative. Instalações com a versão 1.0.2 ou posterior podem atualizar pelo painel do WordPress. Para versões anteriores a 1.0.2, envie este ZIP uma vez e escolha substituir o plugin atual; quadros e configurações são preservados.
 2. Clique em **Visitas → Abrir portal**. A ativação cria uma página chamada **Acolher**, normalmente em `/acolher/`. Em sites sem links permanentes, use o endereço mostrado pelo plugin.
 3. Entre com seu usuário administrador WordPress.
 4. Em **Personalização e ajustes**, configure nome, logo, cores e tela de login. A fonte Montserrat acompanha o plugin, sem requisição a serviços de fontes.
@@ -35,11 +35,15 @@ Filtre por mês e quadro ou marque **Todos os meses**. Cartões arquivados ficam
 | --- | --- |
 | Visitantes no período | Data da primeira visita; quando não preenchida, data do cadastro no fuso horário do WordPress |
 | Pessoas acompanhadas | Pessoas com ao menos uma interação, observação de checklist ou visita realizada no mês, inclusive quem chegou antes; várias visitas ao mesmo cartão contam uma pessoa |
-| Visitas registradas | Número de registros do tipo visita realizada; o indicador também informa o número de pessoas distintas visitadas |
+| Visitas registradas | Visitas lançadas no formulário e tarefas “Visita realizada” concluídas; informa também o número de pessoas distintas visitadas |
 | Prazos em atraso | Visitantes do período com prazo de etapa ou entrega final vencido e acompanhamento ainda não concluído, considerando a data atual |
 | Pessoas por etapa | Lista atual dos visitantes do período; não é uma fotografia histórica da posição do cartão naquele mês |
 
 Clique em um indicador ou etapa para ver a lista de pessoas, com busca por nome, telefone e e-mail e paginação. Abra o visitante para consultar contatos, responsável, etapa, observações do cadastro e todo o histórico de visitas e interações. O gráfico mensal compara visitantes e pessoas acompanhadas em seis meses, e os últimos registros permitem abrir diretamente o visitante.
+
+O indicador **Visitas registradas** também contabiliza cada item de checklist chamado **Visita realizada** que estiver marcado, independentemente de o planejamento automático estar ativado. Maiúsculas/minúsculas, espaços e pontuação final simples não alteram o reconhecimento. Salvar novamente, trocar o responsável ou editar as observações mantém uma única visita por tarefa. Desmarcar, excluir a tarefa ou renomeá-la para outra atividade retira essa visita da contagem; marcar novamente conta uma visita com a nova data de conclusão. Registros manuais de visitas continuam sendo contabilizados separadamente.
+
+Os checks já concluídos são reconhecidos na atualização sem precisar refazer o check. O filtro mensal considera a data e hora de conclusão no fuso do WordPress, incluindo visitantes cadastrados em meses anteriores. Checks muito antigos sem data de conclusão registrada aparecem em **Todos os meses**, identificados no histórico como sem data; não são atribuídos a um mês por suposição. A contagem, a lista de pessoas, o histórico e o gráfico de pessoas acompanhadas respeitam as mesmas permissões.
 
 No modal, **Registrar visita** salva a data da visita realizada e suas observações, com autor e horário do registro. Visitas retroativas entram no mês da data informada. O histórico inclui também as interações das versões anteriores. Para registrar, é necessária a permissão de comentários e acesso de escrita ao quadro; observadores consultam os registros sem alterá-los. O mesmo registro de visita fica disponível na aba **Interações e histórico** do cartão completo. Nenhuma mensagem é enviada ao registrar uma visita.
 
@@ -199,7 +203,7 @@ Desativar ou remover o plugin preserva os dados por padrão. Para remover també
 Não há dependências de frontend nem etapa de compilação. PHP, JavaScript e CSS são locais. Para gerar o ZIP:
 
 ```bash
-python3 bin/build.py dist/visitas-1.2.1.zip
+python3 bin/build.py dist/visitas-1.2.2.zip
 ```
 
 O script extrai a versão e os requisitos dos cabeçalhos e gera também `dist/update.json`, com URL do ZIP, histórico e SHA-256. Publique o código, o ZIP e o manifesto juntos em `main`. Mantenha os ZIPs anteriores disponíveis para instalações que ainda tenham uma oferta em cache. Não altere um ZIP já publicado; aumente a versão para cada lançamento.
@@ -211,6 +215,7 @@ VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/integration.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/dashboard.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/workflow.php
 VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/task-assignees.php
+VISITAS_TESTING=1 VISITAS_WP_ROOT=/caminho/wordpress php tests/checklist-visits.php
 ```
 
 O teste de interface `tests/browser.cjs` exige Playwright, Chromium e um WordPress descartável com o plugin ativado. Configure `TEST_BASE_URL`, `TEST_ADMIN_USER` e `TEST_ADMIN_PASSWORD`. Opcionalmente, informe `VISITAS_PHP`, `VISITAS_PHP_INI` e `VISITAS_WP_ROOT` para o teste iniciar o servidor PHP. `CHROMIUM_PATH` e `PLAYWRIGHT_PATH` permitem usar runtimes já instalados.
@@ -240,3 +245,5 @@ Validação da versão 1.2.0: cálculo cumulativo de dias úteis, calendários p
 Na mesma validação 1.2.0, passaram as 88 verificações de integração e as 66 do dashboard (227 verificações de servidor no total), além dos fluxos de interface anteriores. A atualização nativa desde a versão publicada 1.1.0 foi testada preservando cartões, prazos manuais, modelos, checks já concluídos, histórico, identidade e permissões personalizadas. O planejamento dos cartões antigos permanece manual até a aplicação explícita das novas regras.
 
 Validação da versão 1.2.1: 49 verificações específicas de responsáveis por tarefa, além das 227 verificações anteriores de integração, dashboard e workflow. A interface foi conferida no computador e celular para seleção, remoção, herança de modelos e preservação dos checks, observações e prazos. A atualização nativa desde o ZIP publicado 1.2.0 foi validada em instalação isolada, preservando dados, identidade e permissões. Todos os envios externos foram bloqueados nos testes.
+
+Validação da versão 1.2.2: 53 verificações específicas de visitas por checklist e 276 verificações anteriores aprovadas. Cobertura de check/desmarcação, salvamento sem duplicação, mês de conclusão e fuso horário, cartões anteriores, visitas manuais, responsáveis e quadros privados. Interface conferida no computador e celular, incluindo o indicador, lista de pessoas, observações e manutenção dos filtros. Atualização nativa desde o ZIP publicado 1.2.1 validada com reconhecimento do check anterior e preservação de cartões, prazos, histórico, identidade e permissões. Todos os envios externos foram bloqueados nos testes.

@@ -48,17 +48,21 @@ final class Dashboard {
         return $filters['scope'].' AND '.self::during($filters['period'], 'c.visit_date', 'c.created_at');
     }
 
+    private static function activity_during(array $period): string {
+        return self::during($period, 'a.occurred_on', "(CASE WHEN a.kind='checklist_visit' THEN a.occurred_at ELSE a.created_at END)");
+    }
+
     public static function summary(\WP_REST_Request $r): array {
         global $wpdb;
         $f = self::filters($r); $cards = Store::table('cards'); $activity = Store::table('activity');
         $cohort = self::cohort($f); $scope = $f['scope'];
-        $activity_period = self::during($f['period'], 'a.occurred_on', 'a.created_at');
+        $activity_period = self::activity_during($f['period']);
         $now = current_time('mysql', true); $deadline = Workflow::deadline_sql('c');
         $totals = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS visitors, COALESCE(SUM(c.completed=1),0) AS completed,
             COALESCE(SUM(c.completed=0 AND {$deadline}<%s),0) AS overdue FROM $cards c WHERE $cohort", $now), ARRAY_A);
         $followup = $wpdb->get_row("SELECT COUNT(DISTINCT a.card_id) AS accompanied,
-            COALESCE(SUM(a.kind='visit'),0) AS visits, COUNT(DISTINCT CASE WHEN a.kind='visit' THEN a.card_id END) AS visited_people
-            FROM $activity a INNER JOIN $cards c ON c.id=a.card_id WHERE $scope AND a.kind IN ('visit','comment','checklist_note') AND $activity_period", ARRAY_A);
+            COALESCE(SUM(a.kind IN ('visit','checklist_visit')),0) AS visits, COUNT(DISTINCT CASE WHEN a.kind IN ('visit','checklist_visit') THEN a.card_id END) AS visited_people
+            FROM $activity a INNER JOIN $cards c ON c.id=a.card_id WHERE $scope AND a.kind IN ('visit','checklist_visit','comment','checklist_note') AND $activity_period", ARRAY_A);
         $totals = array_map('intval', array_merge($totals, $followup));
         $counts = [];
         foreach ($wpdb->get_results("SELECT c.list_id,COUNT(*) AS total FROM $cards c WHERE $cohort GROUP BY c.list_id", ARRAY_A) as $row) {
@@ -80,16 +84,16 @@ final class Dashboard {
             $month = $anchor->modify('-'.(5-$i).' months')->format('Y-m');
             $p = self::period($month);
             $visitor_columns[] = 'COALESCE(SUM(CASE WHEN '.self::during($p, 'c.visit_date', 'c.created_at')." THEN 1 ELSE 0 END),0) AS m$i";
-            $followup_columns[] = 'COUNT(DISTINCT CASE WHEN '.self::during($p, 'a.occurred_on', 'a.created_at')." THEN a.card_id END) AS m$i";
+            $followup_columns[] = 'COUNT(DISTINCT CASE WHEN '.self::activity_during($p)." THEN a.card_id END) AS m$i";
             $trend[] = ['month'=>$month];
         }
         $v = $wpdb->get_row('SELECT '.implode(',', $visitor_columns)." FROM $cards c WHERE $scope", ARRAY_A);
-        $a = $wpdb->get_row('SELECT '.implode(',', $followup_columns)." FROM $activity a INNER JOIN $cards c ON c.id=a.card_id WHERE $scope AND a.kind IN ('visit','comment','checklist_note')", ARRAY_A);
+        $a = $wpdb->get_row('SELECT '.implode(',', $followup_columns)." FROM $activity a INNER JOIN $cards c ON c.id=a.card_id WHERE $scope AND a.kind IN ('visit','checklist_visit','comment','checklist_note')", ARRAY_A);
         foreach ($trend as $i=>&$point) { $point['visitors'] = (int)$v['m'.$i]; $point['accompanied'] = (int)$a['m'.$i]; }
         unset($point);
         $recent = $wpdb->get_results("SELECT a.*,c.title,c.board_id,l.name AS list_name,u.display_name AS author
             FROM $activity a INNER JOIN $cards c ON c.id=a.card_id LEFT JOIN ".Store::table('lists')." l ON l.id=c.list_id
-            LEFT JOIN {$wpdb->users} u ON u.ID=a.user_id WHERE $scope AND a.kind IN ('visit','comment','checklist_note') AND $activity_period ORDER BY a.id DESC LIMIT 6", ARRAY_A);
+            LEFT JOIN {$wpdb->users} u ON u.ID=a.user_id WHERE $scope AND a.kind IN ('visit','checklist_visit','comment','checklist_note') AND $activity_period ORDER BY a.created_at DESC,a.id DESC LIMIT 6", ARRAY_A);
         return ['filters'=>['month'=>$f['month'], 'board_id'=>$f['board_id'], 'include_archived'=>$f['include_archived']],
             'totals'=>$totals, 'stages'=>$stages, 'trend'=>$trend, 'recent'=>$recent, 'generated_at'=>gmdate('c')];
     }
@@ -100,8 +104,8 @@ final class Dashboard {
         if (!in_array($group, ['visitors','accompanied','visited','overdue','completed'], true)) { throw new HttpError('Indicador inválido.', 422); }
         $where = self::cohort($f);
         if (in_array($group, ['accompanied','visited'], true)) {
-            $kind = $group === 'visited' ? "a.kind='visit'" : "a.kind IN ('visit','comment','checklist_note')";
-            $where = $f['scope'].' AND EXISTS (SELECT 1 FROM '.Store::table('activity').' a WHERE a.card_id=c.id AND '.$kind.' AND '.self::during($f['period'], 'a.occurred_on', 'a.created_at').')';
+            $kind = $group === 'visited' ? "a.kind IN ('visit','checklist_visit')" : "a.kind IN ('visit','checklist_visit','comment','checklist_note')";
+            $where = $f['scope'].' AND EXISTS (SELECT 1 FROM '.Store::table('activity').' a WHERE a.card_id=c.id AND '.$kind.' AND '.self::activity_during($f['period']).')';
         }
         if ($group === 'overdue') { $where .= $wpdb->prepare(' AND c.completed=0 AND '.Workflow::deadline_sql('c').'<%s', current_time('mysql', true)); }
         if ($group === 'completed') { $where .= ' AND c.completed=1'; }
@@ -135,7 +139,7 @@ final class Dashboard {
         $card = Access::card((int)$r['id']);
         $page = max(1, min(1000000, absint($r->get_param('page') ?: 1)));
         $items = $wpdb->get_results($wpdb->prepare('SELECT a.*,u.display_name AS author FROM '.Store::table('activity')." a LEFT JOIN {$wpdb->users} u ON u.ID=a.user_id
-            WHERE a.card_id=%d AND a.kind IN ('visit','comment','checklist_note') ORDER BY a.id DESC LIMIT 21 OFFSET %d", $card['id'], ($page-1)*20), ARRAY_A);
+            WHERE a.card_id=%d AND a.kind IN ('visit','checklist_visit','comment','checklist_note') ORDER BY a.created_at DESC,a.id DESC LIMIT 21 OFFSET %d", $card['id'], ($page-1)*20), ARRAY_A);
         $can_comment = false;
         try { Access::card((int)$card['id'], 'comment'); $can_comment = true; } catch (HttpError $e) {}
         return ['items'=>array_slice($items, 0, 20), 'page'=>$page, 'has_more'=>count($items)>20, 'can_comment'=>$can_comment];

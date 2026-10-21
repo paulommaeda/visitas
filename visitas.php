@@ -3,7 +3,7 @@
  * Plugin Name: Visitas — Acolhimento e acompanhamento
  * Plugin URI: https://github.com/paulommaeda/visitas
  * Description: Portal independente de visitantes com quadros Kanban, modelos, permissões e notificações por e-mail e SMS Gateway.
- * Version: 1.2.1
+ * Version: 1.2.2
  * Requires at least: 6.5
  * Requires PHP: 8.1
  * Author: Paulo Maeda
@@ -13,7 +13,7 @@
  */
 
 defined('ABSPATH') || exit;
-define('VISITAS_VERSION', '1.2.1');
+define('VISITAS_VERSION', '1.2.2');
 define('VISITAS_FILE', __FILE__);
 define('VISITAS_DIR', plugin_dir_path(__FILE__));
 define('VISITAS_URL', plugin_dir_url(__FILE__));

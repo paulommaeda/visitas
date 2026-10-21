@@ -90,8 +90,11 @@ final class Installer {
                 kind varchar(30) NOT NULL,
                 content text NOT NULL,
                 occurred_on date DEFAULT NULL,
+                occurred_at datetime DEFAULT NULL,
+                source_key varchar(64) DEFAULT NULL,
                 created_at datetime NOT NULL,
                 PRIMARY KEY  (id),
+                UNIQUE KEY card_source (card_id,source_key),
                 KEY card_activity (card_id,id),
                 KEY followup_date (kind,occurred_on,card_id)
             ) $cc;",
@@ -128,6 +131,16 @@ final class Installer {
         }
         if (!$wpdb->get_var("SELECT id FROM {$p}boards LIMIT 1")) {
             Store::create_board(['name'=>'Acolhimento de visitantes', 'description'=>'Do primeiro encontro aos próximos passos. Um cuidado de cada vez.', 'seed'=>true]);
+        }
+        if (version_compare((string)get_option('visitas_version', '0'), '1.2.2', '<')) {
+            $last = 0;
+            do {
+                $batch = $wpdb->get_results($wpdb->prepare("SELECT id,checklists_json FROM {$p}cards WHERE id>%d ORDER BY id LIMIT 100", $last), ARRAY_A);
+                foreach ($batch as $card) {
+                    Store::transaction(static fn()=>Store::sync_checklist_visits((int)$card['id'], Store::json($card['checklists_json'])));
+                    $last = (int)$card['id'];
+                }
+            } while (count($batch) === 100);
         }
         update_option('visitas_version', VISITAS_VERSION);
         Notifications::schedule();

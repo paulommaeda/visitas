@@ -137,6 +137,43 @@ let server, browser, activePage, fixture;
   await page.locator('[data-action="close"]').click();
   console.log('PASS responsive dashboard, visitor lists and visitor details fit mobile; a visit is saved from mobile');
 
+  // A completed visit task updates the dashboard even for an earlier visitor.
+  const beforeVisitChecks = Number(await page.locator('[data-metric="visited"]').textContent());
+  const visitTaskCard = fixture.previous.cards[6];
+  await page.evaluate(async ({ board, id }) => {
+    const V = window.V;
+    V.board = await V.api('boards/' + board, 'PATCH', { workflow: { enabled: true, require_order: false } });
+    const card = await V.api('cards/' + id);
+    const updated = await V.api('cards/' + id, 'PATCH', { version: +card.version, use_board_workflow: true, checklists: [...card.checklists, { id: 'dashboard-visit', title: 'Visita pastoral', items: [{ id: 'done', text: 'Visita realizada', notes: 'Visita concluída pela equipe de acolhimento.' }] }] });
+    await V.editCard(updated);
+  }, { board: fixture.board.id, id: visitTaskCard.id });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator('[data-action="card-tab"][data-tab="checklists"]').click();
+  await page.locator('[data-checklist="dashboard-visit"] [data-item-done]').check();
+  await page.waitForFunction(expected => !window.V.checklistSaving && Number(document.querySelector('[data-metric="visited"]')?.textContent) === expected, beforeVisitChecks + 1);
+  await page.locator('[data-action="close"]').first().click();
+  await page.screenshot({ path: path.join(output, 'dashboard-checklist-visit-desktop.png'), fullPage: true, animations: 'disabled' });
+  await page.locator('.v-dashboard-metric-visited').click();
+  await page.locator(`.v-modal [data-action="dashboard-visitor"][data-id="${visitTaskCard.id}"]`).click();
+  await page.locator('#v-dashboard-followups .v-followup-kind').filter({ hasText: 'Visita pelo checklist' }).waitFor();
+  assert.ok((await page.locator('#v-dashboard-followups').textContent()).includes('Visita concluída pela equipe'));
+  await page.locator('[data-action="dashboard-full-card"]').click();
+  await page.locator('[data-action="card-tab"][data-tab="checklists"]').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('[data-checklist="dashboard-visit"] [data-item-done]').uncheck();
+  await page.waitForFunction(expected => !window.V.checklistSaving && Number(document.querySelector('[data-metric="visited"]')?.textContent) === expected, beforeVisitChecks);
+  await page.locator('[data-checklist="dashboard-visit"] [data-item-done]').check();
+  await page.waitForFunction(expected => !window.V.checklistSaving && Number(document.querySelector('[data-metric="visited"]')?.textContent) === expected, beforeVisitChecks + 1);
+  await page.locator('#v-card-form button[type="submit"]').click();
+  await page.locator('.v-modal').waitFor({ state: 'detached' });
+  await page.waitForFunction(expected => Number(document.querySelector('[data-metric="visited"]')?.textContent) === expected, beforeVisitChecks + 1);
+  assert.equal(await page.locator('#v-dashboard-month').inputValue(), fixture.current.month);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.locator('.v-dashboard-metric-visited').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(output, 'dashboard-checklist-visit-mobile.png'), fullPage: true, animations: 'disabled' });
+  assert.ok(await page.evaluate(() => window.V.followupRecordsHTML([{ kind: 'checklist_visit', content: 'Check anterior', created_at: '2026-10-01 12:00:00', occurred_at: null, user_id: 0 }]).includes('Data de conclusão não registrada')));
+  console.log('PASS visit task checks update the KPI, drilldown and history; mobile uncheck/recheck and repeated saves keep one visit with the same monthly filter');
+
   const anon = await browser.newContext();
   const response = await anon.request.get(base + '/?rest_route=/visitas/v1/dashboard'); assert.equal(response.status(), 403);
   const noNonce = await context.request.get(base + '/?rest_route=/visitas/v1/dashboard'); assert.equal(noNonce.status(), 403);
